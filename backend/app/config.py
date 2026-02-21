@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     JWT_EXPIRE_MINUTES: int = 1440
     STORAGE_PATH: str = "/data/skills"
     ALLOW_REGISTRATION: bool = True
+    TESTING: bool = False
     DEFAULT_ADMIN_USERNAME: str = "admin"
     DEFAULT_ADMIN_PASSWORD: str = "admin123"
     DEFAULT_ADMIN_EMAIL: str = "admin@example.com"

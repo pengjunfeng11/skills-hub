@@ -70,7 +70,7 @@ async def list_skills(
             or_(Skill.name.ilike(f"%{q}%"), Skill.display_name.ilike(f"%{q}%"), Skill.description.ilike(f"%{q}%"))
         )
     if tag:
-        query = query.where(Skill.tags.any(tag))
+        query = query.where(Skill.tags.contains([tag]))
     if visibility:
         query = query.where(Skill.visibility == visibility)
 
@@ -224,6 +224,7 @@ async def create_version(
         published_at=datetime.now(timezone.utc),
     )
     db.add(version)
+    await db.flush()  # ensure version.id is available for FK references
 
     # Add files if provided
     if data.files:

@@ -28,10 +28,10 @@ async def create_default_admin():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create tables (for development; use Alembic in production)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    await create_default_admin()
+    if not settings.TESTING:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        await create_default_admin()
     yield
 
 
