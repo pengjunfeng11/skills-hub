@@ -56,4 +56,9 @@ export const getApiKeys = () => api.get('/keys')
 export const createApiKey = (data) => api.post('/keys', data)
 export const deleteApiKey = (id) => api.delete(`/keys/${id}`)
 
+// Stats
+export const getStatsOverview = () => api.get('/stats/overview')
+export const getStatsPopular = (params) => api.get('/stats/popular', { params })
+export const getStatsTrend = (params) => api.get('/stats/trend', { params })
+
 export default api

@@ -531,7 +531,143 @@ class TestPluginAPI:
 
 
 # ============================================================
-# 7. 团队管理测试
+# 7. 使用统计测试
+# ============================================================
+
+class TestUsageLogging:
+    """Plugin API 调用应写入 usage log"""
+
+    async def test_resolve_creates_log(self, client: AsyncClient, api_key_header: dict,
+                                       auth_header: dict, sample_version):
+        await client.post("/api/v1/skills/resolve", json={
+            "skills": ["test-skill"],
+        }, headers=api_key_header)
+
+        # Check stats overview reflects the call
+        resp = await client.get("/api/stats/overview", headers=auth_header)
+        assert resp.status_code == 200
+        assert resp.json()["total_calls"] >= 1
+
+    async def test_catalog_creates_log(self, client: AsyncClient, api_key_header: dict,
+                                       auth_header: dict, sample_version):
+        await client.get("/api/v1/skills/catalog", headers=api_key_header)
+
+        resp = await client.get("/api/stats/overview", headers=auth_header)
+        assert resp.status_code == 200
+        assert resp.json()["total_calls"] >= 1
+
+    async def test_raw_creates_log(self, client: AsyncClient, api_key_header: dict,
+                                    auth_header: dict, sample_version):
+        await client.get("/api/v1/skills/test-skill/raw", headers=api_key_header)
+
+        resp = await client.get("/api/stats/overview", headers=auth_header)
+        assert resp.status_code == 200
+        assert resp.json()["total_calls"] >= 1
+
+    async def test_resolve_nonexistent_no_log(self, client: AsyncClient, api_key_header: dict,
+                                              auth_header: dict):
+        """Resolving a skill that doesn't exist should NOT create a log."""
+        await client.post("/api/v1/skills/resolve", json={
+            "skills": ["no-such-skill"],
+        }, headers=api_key_header)
+
+        resp = await client.get("/api/stats/overview", headers=auth_header)
+        assert resp.status_code == 200
+        # No resolve log for nonexistent skill (only 0 total)
+        assert resp.json()["total_calls"] == 0
+
+
+class TestStatsAPI:
+    """统计 API: overview / popular / trend"""
+
+    async def test_overview_empty(self, client: AsyncClient, auth_header: dict):
+        resp = await client.get("/api/stats/overview", headers=auth_header)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total_calls"] == 0
+        assert data["today_calls"] == 0
+        assert data["week_calls"] == 0
+        assert data["active_skills"] == 0
+
+    async def test_overview_after_calls(self, client: AsyncClient, auth_header: dict,
+                                        api_key_header: dict, sample_version):
+        # Make some API calls
+        await client.post("/api/v1/skills/resolve", json={"skills": ["test-skill"]}, headers=api_key_header)
+        await client.get("/api/v1/skills/test-skill/raw", headers=api_key_header)
+        await client.get("/api/v1/skills/catalog", headers=api_key_header)
+
+        resp = await client.get("/api/stats/overview", headers=auth_header)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total_calls"] == 3
+        assert data["today_calls"] == 3
+        assert data["week_calls"] == 3
+        assert data["active_skills"] >= 1  # "test-skill" (catalog uses "*" which is excluded)
+
+    async def test_popular_empty(self, client: AsyncClient, auth_header: dict):
+        resp = await client.get("/api/stats/popular", headers=auth_header)
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    async def test_popular_after_calls(self, client: AsyncClient, auth_header: dict,
+                                       api_key_header: dict, sample_version):
+        await client.post("/api/v1/skills/resolve", json={"skills": ["test-skill"]}, headers=api_key_header)
+        await client.post("/api/v1/skills/resolve", json={"skills": ["test-skill"]}, headers=api_key_header)
+        await client.get("/api/v1/skills/test-skill/raw", headers=api_key_header)
+
+        resp = await client.get("/api/stats/popular?days=30&limit=10", headers=auth_header)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) >= 1
+        assert data[0]["skill_name"] == "test-skill"
+        assert data[0]["call_count"] == 3  # 2 resolve + 1 raw
+        assert data[0]["percentage"] == 100.0
+
+    async def test_trend_empty(self, client: AsyncClient, auth_header: dict):
+        resp = await client.get("/api/stats/trend?days=7", headers=auth_header)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 8  # 7 days ago + today = 8 entries
+        assert all(item["call_count"] == 0 for item in data)
+
+    async def test_trend_after_calls(self, client: AsyncClient, auth_header: dict,
+                                     api_key_header: dict, sample_version):
+        await client.post("/api/v1/skills/resolve", json={"skills": ["test-skill"]}, headers=api_key_header)
+
+        resp = await client.get("/api/stats/trend?days=7", headers=auth_header)
+        assert resp.status_code == 200
+        data = resp.json()
+        # Today's entry should have at least 1 call
+        today_entry = data[-1]
+        assert today_entry["call_count"] >= 1
+
+    async def test_trend_has_date_format(self, client: AsyncClient, auth_header: dict):
+        resp = await client.get("/api/stats/trend?days=3", headers=auth_header)
+        data = resp.json()
+        for item in data:
+            assert "date" in item
+            assert "call_count" in item
+            # date should be ISO format YYYY-MM-DD
+            assert len(item["date"]) == 10
+
+    async def test_stats_requires_auth(self, client: AsyncClient):
+        resp = await client.get("/api/stats/overview")
+        assert resp.status_code == 401
+
+    async def test_stats_rejects_api_key(self, client: AsyncClient, api_key_header: dict):
+        """Stats endpoints require JWT, not API key."""
+        resp = await client.get("/api/stats/overview", headers=api_key_header)
+        assert resp.status_code == 401
+
+    async def test_popular_params_validation(self, client: AsyncClient, auth_header: dict):
+        resp = await client.get("/api/stats/popular?days=0", headers=auth_header)
+        assert resp.status_code == 422
+        resp = await client.get("/api/stats/popular?limit=0", headers=auth_header)
+        assert resp.status_code == 422
+
+
+# ============================================================
+# 9. 团队管理测试
 # ============================================================
 
 class TestTeams:
@@ -575,7 +711,7 @@ class TestTeams:
 
 
 # ============================================================
-# 8. 健康检查
+# 10. 健康检查
 # ============================================================
 
 class TestHealth:

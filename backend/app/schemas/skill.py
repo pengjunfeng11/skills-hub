@@ -148,3 +148,22 @@ class ParsedSkillResponse(BaseModel):
     category: str | None = None
     version: str | None = None
     body: str | None = None
+
+
+# Stats schemas
+class StatsOverviewResponse(BaseModel):
+    total_calls: int
+    today_calls: int
+    week_calls: int
+    active_skills: int
+
+
+class StatsPopularItem(BaseModel):
+    skill_name: str
+    call_count: int
+    percentage: float
+
+
+class StatsTrendItem(BaseModel):
+    date: str
+    call_count: int
