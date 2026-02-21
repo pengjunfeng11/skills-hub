@@ -26,8 +26,42 @@
               </el-select>
             </div>
           </template>
-          <div v-if="currentContent" class="markdown-body" v-html="renderedContent"></div>
+
+          <!-- Tab: SKILL.md + 附属文件 -->
+          <el-tabs v-if="currentContent || Object.keys(currentFiles).length" v-model="activeTab">
+            <el-tab-pane label="SKILL.md" name="skill-md">
+              <div class="markdown-body" v-html="renderedContent"></div>
+            </el-tab-pane>
+            <el-tab-pane
+              v-for="(content, path) in currentFiles"
+              :key="path"
+              :label="path"
+              :name="path"
+            >
+              <pre class="file-content">{{ content }}</pre>
+            </el-tab-pane>
+          </el-tabs>
+
           <el-empty v-else description="暂无版本" />
+        </el-card>
+
+        <!-- 文件列表卡片 -->
+        <el-card v-if="Object.keys(currentFiles).length" style="margin-top: 20px">
+          <template #header>
+            <span>附属文件 ({{ Object.keys(currentFiles).length }})</span>
+          </template>
+          <div
+            v-for="(content, path) in currentFiles"
+            :key="path"
+            class="file-entry"
+            @click="activeTab = path"
+          >
+            <el-icon style="margin-right: 6px"><Document /></el-icon>
+            <span>{{ path }}</span>
+            <span style="margin-left: auto; color: #909399; font-size: 12px">
+              {{ content.length }} 字符
+            </span>
+          </div>
         </el-card>
       </el-col>
 
@@ -45,6 +79,7 @@
               <span v-if="!skill?.tags?.length" style="color: #909399">无</span>
             </el-descriptions-item>
             <el-descriptions-item label="最新版本">{{ skill?.latest_version || '未发布' }}</el-descriptions-item>
+            <el-descriptions-item label="文件数">{{ Object.keys(currentFiles).length }}</el-descriptions-item>
             <el-descriptions-item label="创建时间">{{ formatDate(skill?.created_at) }}</el-descriptions-item>
             <el-descriptions-item label="更新时间">{{ formatDate(skill?.updated_at) }}</el-descriptions-item>
           </el-descriptions>
@@ -111,6 +146,8 @@ const skill = ref(null)
 const versions = ref([])
 const selectedVersion = ref('')
 const currentContent = ref('')
+const currentFiles = ref({})
+const activeTab = ref('skill-md')
 const showVersionDialog = ref(false)
 const publishing = ref(false)
 const versionFiles = ref({})
@@ -122,7 +159,6 @@ const versionForm = ref({
 })
 
 const renderedContent = computed(() => {
-  // Simple markdown-like rendering (content is displayed raw for now)
   return `<pre style="white-space: pre-wrap; word-wrap: break-word; font-family: inherit;">${escapeHtml(currentContent.value)}</pre>`
 })
 
@@ -149,7 +185,8 @@ async function loadSkill() {
 
     if (versions.value.length > 0) {
       selectedVersion.value = versions.value[0].version
-      currentContent.value = versions.value[0].content
+      // Load full version detail (with files) for the latest version
+      await loadVersion()
     }
   } catch {
     ElMessage.error('加载失败')
@@ -163,6 +200,8 @@ async function loadVersion() {
   try {
     const res = await getVersion(skillName, selectedVersion.value)
     currentContent.value = res.data.content
+    currentFiles.value = res.data.files || {}
+    activeTab.value = 'skill-md'
   } catch {
     ElMessage.error('加载版本失败')
   }
@@ -206,3 +245,39 @@ async function publishVersion() {
 
 onMounted(loadSkill)
 </script>
+
+<style scoped>
+.file-content {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 4px;
+  border: 1px solid #ebeef5;
+  margin: 0;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.file-entry {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #409eff;
+  transition: background 0.2s;
+}
+
+.file-entry:hover {
+  background: #f5f7fa;
+}
+
+.file-entry + .file-entry {
+  border-top: 1px solid #ebeef5;
+}
+</style>
