@@ -24,6 +24,7 @@ const routes = [
       { path: 'skills/:name/edit', name: 'SkillEdit', component: () => import('../views/SkillEditor.vue') },
       { path: 'teams', name: 'Teams', component: () => import('../views/TeamView.vue') },
       { path: 'settings', name: 'Settings', component: () => import('../views/Settings.vue') },
+      { path: 'setup', name: 'SetupGuide', component: () => import('../views/SetupGuide.vue') },
     ],
   },
 ]
@@ -35,7 +36,7 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   const auth = useAuthStore()
-  if (to.meta.requiresAuth && !auth.token) {
+  if (to.matched.some(record => record.meta.requiresAuth) && !auth.token) {
     return { name: 'Login' }
   }
 })

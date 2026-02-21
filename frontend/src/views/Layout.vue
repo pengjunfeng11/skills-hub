@@ -5,7 +5,7 @@
         Skills Hub
       </div>
       <el-menu
-        :default-active="route.path"
+        :default-active="activeMenu"
         background-color="#304156"
         text-color="#bfcbd9"
         active-text-color="#409eff"
@@ -27,6 +27,10 @@
           <el-icon><Setting /></el-icon>
           <span>设置</span>
         </el-menu-item>
+        <el-menu-item index="/setup">
+          <el-icon><Connection /></el-icon>
+          <span>集成指南</span>
+        </el-menu-item>
       </el-menu>
     </el-aside>
 
@@ -44,13 +48,21 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+
+const activeMenu = computed(() => {
+  const path = route.path
+  if (path === '/') return '/'
+  // Match parent path for nested routes (e.g., /skills/xxx -> /skills)
+  const segments = path.split('/').filter(Boolean)
+  return '/' + (segments[0] || '')
+})
 
 onMounted(() => {
   auth.fetchUser()
