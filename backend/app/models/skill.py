@@ -1,21 +1,10 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Text, ForeignKey, DateTime, Boolean, func, JSON, Uuid, ARRAY, TypeDecorator
+from sqlalchemy import String, Text, ForeignKey, DateTime, Boolean, func, JSON, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-
-
-class StringArray(TypeDecorator):
-    """A type that uses ARRAY(String) on PostgreSQL and JSON on other backends."""
-    impl = JSON
-    cache_ok = True
-
-    def load_dialect_impl(self, dialect):
-        if dialect.name == "postgresql":
-            return dialect.type_descriptor(ARRAY(String))
-        return dialect.type_descriptor(JSON)
 
 
 class Skill(Base):
@@ -26,7 +15,7 @@ class Skill(Base):
     display_name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     category_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("categories.id"), nullable=True)
-    tags: Mapped[list[str]] = mapped_column(StringArray, default=list)
+    tags: Mapped[list[str]] = mapped_column(JSON, default=list)
     team_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("teams.id"), nullable=True)
     author_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id"))
     visibility: Mapped[str] = mapped_column(String(20), default="public")  # public / team / private
