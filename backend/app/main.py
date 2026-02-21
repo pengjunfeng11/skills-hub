@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select, text
+from sqlalchemy import select, func
 
 from app.config import settings
 from app.core.security import hash_password
@@ -13,10 +13,9 @@ from app.models import *  # noqa: F401, F403 - ensure all models are loaded
 async def create_default_admin():
     """Create default admin user if no users exist."""
     async with async_session() as db:
-        result = await db.execute(select(User))
-        if result.scalar_one_or_none() is None:
-            from app.models.user import User as UserModel
-            admin = UserModel(
+        count = (await db.execute(select(func.count()).select_from(User))).scalar()
+        if count == 0:
+            admin = User(
                 username=settings.DEFAULT_ADMIN_USERNAME,
                 email=settings.DEFAULT_ADMIN_EMAIL,
                 password_hash=hash_password(settings.DEFAULT_ADMIN_PASSWORD),
