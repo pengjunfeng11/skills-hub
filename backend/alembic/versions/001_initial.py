@@ -59,7 +59,7 @@ def upgrade() -> None:
         sa.Column("display_name", sa.String(200), nullable=False),
         sa.Column("description", sa.Text, nullable=True),
         sa.Column("category_id", UUID, sa.ForeignKey("categories.id"), nullable=True),
-        sa.Column("tags", JSON, nullable=True, server_default="[]"),
+        sa.Column("tags", sa.ARRAY(sa.String), nullable=True),
         sa.Column("team_id", UUID, sa.ForeignKey("teams.id"), nullable=True),
         sa.Column("author_id", UUID, sa.ForeignKey("users.id"), nullable=False),
         sa.Column("visibility", sa.String(20), nullable=False, server_default="public"),
