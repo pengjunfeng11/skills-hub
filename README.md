@@ -128,34 +128,24 @@ npm run dev
 
 ## AI 集成
 
-### 方式一：CLAUDE.md 声明
+### 方式一：一键配置脚本（推荐）
 
-在项目的 `CLAUDE.md` 中声明所需 Skills：
-
-```markdown
-## Skills Hub
-
-本项目使用公司 Skills Hub 管理技能。
-
-启动时请调用以下接口获取 skills：
-- 平台地址: https://skills.company.internal
-- API Key: 通过环境变量 SKILLS_HUB_API_KEY 获取
-- 所需 Skills: deploy-k8s, code-review-standards, api-design-guide
-
-使用方式：对上述每个 skill，GET https://skills.company.internal/api/v1/skills/{name}/raw
-获取到的内容即为该 skill 的指令，请遵循执行。
-```
-
-### 方式二：批量解析 API
+项目提供了交互式配置脚本，自动完成 Hook + MCP + 环境变量的配置：
 
 ```bash
-curl -X POST https://skills.company.internal/api/v1/skills/resolve \
-  -H "Authorization: Bearer skh_your_api_key" \
-  -H "Content-Type: application/json" \
-  -d '{"skills": ["deploy-k8s", "code-review@1.2.0"]}'
+cd skills-hub
+bash setup-claude.sh
 ```
 
-### 方式三：MCP Server
+脚本会自动：
+- 创建 `~/.claude/hooks/fetch-skills.sh`（用户提交提示时自动匹配 Skills）
+- 更新 `~/.claude/settings.json` 添加 Hook 配置
+- 更新 `~/.claude.json` 添加 MCP Server 配置
+- 设置 `SKILLS_HUB_URL` 和 `SKILLS_HUB_API_KEY` 环境变量
+
+也可以在前端 Web UI 的 **集成指南** 页面（`/setup`）查看逐步配置说明和可复制的命令。
+
+### 方式二：MCP Server
 
 在 `~/.claude.json` 中配置 MCP Server：
 
@@ -173,22 +163,32 @@ curl -X POST https://skills.company.internal/api/v1/skills/resolve \
 }
 ```
 
-### 方式四：一键配置脚本
+### 方式三：CLAUDE.md 声明
 
-项目提供了交互式配置脚本，自动完成 Hook + MCP + 环境变量的配置：
+在项目的 `CLAUDE.md` 中声明所需 Skills：
 
-```bash
-cd skills-hub
-bash setup-claude.sh
+```markdown
+## Skills Hub
+
+本项目使用公司 Skills Hub 管理技能。
+
+启动时请调用以下接口获取 skills：
+- 平台地址: https://skills.company.internal
+- API Key: 通过环境变量 SKILLS_HUB_API_KEY 获取
+- 所需 Skills: deploy-k8s, code-review-standards, api-design-guide
+
+使用方式：对上述每个 skill，GET https://skills.company.internal/api/v1/skills/{name}/raw
+获取到的内容即为该 skill 的指令，请遵循执行。
 ```
 
-脚本会自动：
-- 创建 `~/.claude/hooks/fetch-skills.sh`（用户提交提示时自动匹配 Skills）
-- 更新 `~/.claude/settings.json` 添加 Hook 配置
-- 更新 `~/.claude.json` 添加 MCP Server 配置
-- 设置 `SKILLS_HUB_URL` 和 `SKILLS_HUB_API_KEY` 环境变量
+### 方式四：批量解析 API
 
-也可以在前端 Web UI 的 **集成指南** 页面（`/setup`）查看逐步配置说明和可复制的命令。
+```bash
+curl -X POST https://skills.company.internal/api/v1/skills/resolve \
+  -H "Authorization: Bearer skh_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{"skills": ["deploy-k8s", "code-review@1.2.0"]}'
+```
 
 ## API 文档
 
