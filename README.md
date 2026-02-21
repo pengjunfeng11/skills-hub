@@ -113,10 +113,13 @@ npm run dev
 - **团队管理** — 创建团队、团队级 Skills
 - **权限控制** — public / team / private 可见性
 - **Docker Compose 部署** — 一键启动
+- **MCP Server** — 标准 MCP 协议集成，Claude Code 原生支持
+- **集成指南** — 前端集成向导页面 + 一键配置脚本
+- **输入验证** — 全面的 Pydantic 字段约束和 SQL 注入防护
+- **API Key 权限** — scope 级别的访问控制（read / write）
 
 ### 规划中
 
-- MCP Server 适配器
 - 使用统计
 - 评分 / 评论
 - Webhook 通知
@@ -152,19 +155,40 @@ curl -X POST https://skills.company.internal/api/v1/skills/resolve \
   -d '{"skills": ["deploy-k8s", "code-review@1.2.0"]}'
 ```
 
-### 方式三：MCP Server（规划中）
+### 方式三：MCP Server
+
+在 `~/.claude.json` 中配置 MCP Server：
 
 ```json
 {
   "mcpServers": {
     "skills-hub": {
-      "command": "skills-hub-mcp",
-      "args": ["--server", "https://skills.company.internal"],
-      "env": { "SKILLS_HUB_API_KEY": "..." }
+      "type": "sse",
+      "url": "https://skills.company.internal/mcp",
+      "headers": {
+        "Authorization": "Bearer skh_your_api_key"
+      }
     }
   }
 }
 ```
+
+### 方式四：一键配置脚本
+
+项目提供了交互式配置脚本，自动完成 Hook + MCP + 环境变量的配置：
+
+```bash
+cd skills-hub
+bash setup-claude.sh
+```
+
+脚本会自动：
+- 创建 `~/.claude/hooks/fetch-skills.sh`（用户提交提示时自动匹配 Skills）
+- 更新 `~/.claude/settings.json` 添加 Hook 配置
+- 更新 `~/.claude.json` 添加 MCP Server 配置
+- 设置 `SKILLS_HUB_URL` 和 `SKILLS_HUB_API_KEY` 环境变量
+
+也可以在前端 Web UI 的 **集成指南** 页面（`/setup`）查看逐步配置说明和可复制的命令。
 
 ## API 文档
 
@@ -191,6 +215,7 @@ curl -X POST https://skills.company.internal/api/v1/skills/resolve \
 skills-hub/
 ├── docker-compose.yml          # Docker Compose 编排
 ├── .env.example                # 环境变量模板
+├── setup-claude.sh             # Claude Code 一键集成配置脚本
 ├── backend/                    # FastAPI 后端
 │   ├── pyproject.toml
 │   ├── Dockerfile
@@ -217,12 +242,12 @@ skills-hub/
 │   ├── Dockerfile
 │   ├── nginx.conf
 │   └── src/
-│       ├── views/              # 页面组件
+│       ├── views/              # 页面组件（含集成指南 SetupGuide）
 │       ├── components/         # 通用组件
 │       ├── api/                # API 调用
 │       ├── router/             # 路由
 │       └── stores/             # Pinia 状态
-└── mcp-server/                 # MCP 适配器（规划中）
+└── mcp-server/                 # MCP Server 适配器（SSE 协议）
 ```
 
 ## 数据模型

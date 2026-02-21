@@ -276,3 +276,68 @@ curl http://localhost:8000/api/v1/skills/catalog \
 ```json
 {"name": "deploy-k8s", "version": "1.2.0", "content": "# K8s 部署指南\n..."}
 ```
+
+> **注意**：Plugin API 仅返回 `visibility: "public"` 的 Skills。API Key 需包含 `read` scope。
+
+---
+
+## MCP Server
+
+Skills Hub 提供标准 MCP（Model Context Protocol）SSE 端点，Claude Code 原生支持。
+
+### 端点
+
+```
+SSE: http://localhost:8000/mcp
+```
+
+### 配置方式
+
+在 `~/.claude.json` 中添加：
+
+```json
+{
+  "mcpServers": {
+    "skills-hub": {
+      "type": "sse",
+      "url": "http://localhost:8000/mcp",
+      "headers": {
+        "Authorization": "Bearer skh_your_api_key"
+      }
+    }
+  }
+}
+```
+
+### 可用工具
+
+MCP Server 暴露以下工具供 Claude Code 调用：
+
+| 工具 | 说明 |
+|---|---|
+| `list_skills` | 列出所有已发布的公开 Skills |
+| `get_skill` | 获取指定 Skill 的 SKILL.md 内容 |
+| `resolve_skills` | 批量解析多个 Skills |
+| `search_skills` | 按关键词搜索 Skills |
+
+---
+
+## 一键集成配置
+
+### 配置脚本
+
+项目根目录提供 `setup-claude.sh` 交互式脚本：
+
+```bash
+bash setup-claude.sh
+```
+
+自动完成：
+1. 创建 `~/.claude/hooks/fetch-skills.sh`（Hook 脚本）
+2. 更新 `~/.claude/settings.json` 添加 `UserPromptSubmit` Hook
+3. 更新 `~/.claude.json` 添加 MCP Server 配置
+4. 设置 `SKILLS_HUB_URL` 和 `SKILLS_HUB_API_KEY` 环境变量
+
+### Web UI 集成指南
+
+前端 `/setup` 页面提供图形化的配置向导，包含可复制的命令和逐步说明。

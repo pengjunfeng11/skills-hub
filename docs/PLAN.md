@@ -100,6 +100,18 @@ GET  /api/v1/skills/{name}/raw — 获取原始 SKILL.md 内容
 | 21 | Nginx 反向代理配置 | ✅ 完成 |
 | 22 | 文档（README + API 文档自动生成 via FastAPI /docs） | ✅ 完成 |
 
+### Phase 5: MCP Server + 集成向导 + 安全加固 ✅
+
+| # | 任务 | 状态 |
+|---|------|------|
+| 23 | MCP Server 适配器（SSE 协议） | ✅ 完成 |
+| 24 | 集成指南页面（SetupGuide.vue，步骤条 + 可复制命令） | ✅ 完成 |
+| 25 | 一键配置脚本（setup-claude.sh，Hook + MCP + 环境变量） | ✅ 完成 |
+| 26 | 输入验证加固（Pydantic Field 约束、SQL LIKE 转义） | ✅ 完成 |
+| 27 | API Key scope 检查（Plugin API 强制 read 权限） | ✅ 完成 |
+| 28 | 重复资源冲突处理（skill name / version 唯一约束 + 409） | ✅ 完成 |
+| 29 | 前端修复（路由响应式、加载状态、剪贴板错误处理） | ✅ 完成 |
+
 ## 关键技术决策
 
 ### 1. 自动建表 vs Alembic 迁移
@@ -128,7 +140,6 @@ MVP 阶段使用 `Base.metadata.create_all()` 自动建表，同时保留 Alembi
 - Skill 导入/导出（Git 仓库批量导入，导出为 zip）
 
 ### P2（进阶）
-- MCP Server 适配器
 - 使用统计（拉取频率、热门 Skills）
 - 评分 / 评论系统
 - Webhook 通知（Slack / 飞书）
