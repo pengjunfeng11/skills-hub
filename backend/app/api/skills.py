@@ -11,6 +11,8 @@ from app.database import get_db
 from app.models.skill import Skill, SkillFile, SkillVersion
 from app.models.user import User
 from app.schemas.skill import (
+    ParseSkillRequest,
+    ParsedSkillResponse,
     SkillCreate,
     SkillListResponse,
     SkillResponse,
@@ -18,7 +20,7 @@ from app.schemas.skill import (
     VersionCreate,
     VersionResponse,
 )
-from app.utils.skill_parser import validate_semver, validate_skill_name
+from app.utils.skill_parser import parse_skill_md, validate_semver, validate_skill_name
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
 
@@ -119,6 +121,23 @@ async def create_skill(
     return _skill_to_response(skill)
 
 
+@router.post("/parse-skill-md", response_model=ParsedSkillResponse)
+async def parse_skill_content(
+    data: ParseSkillRequest,
+    user: User = Depends(get_current_user),
+):
+    parsed = parse_skill_md(data.content)
+    return ParsedSkillResponse(
+        name=parsed.get("name"),
+        display_name=parsed.get("display_name"),
+        description=parsed.get("description"),
+        tags=parsed.get("tags", []),
+        category=parsed.get("category"),
+        version=parsed.get("metadata", {}).get("version"),
+        body=parsed.get("body"),
+    )
+
+
 @router.get("/{name}", response_model=SkillResponse)
 async def get_skill(
     name: str,
@@ -209,6 +228,8 @@ async def create_version(
     # Add files if provided
     if data.files:
         for path, content in data.files.items():
+            if ".." in path or path.startswith("/"):
+                raise HTTPException(status_code=400, detail=f"Invalid file path: {path}")
             skill_file = SkillFile(
                 skill_version_id=version.id,
                 path=path,

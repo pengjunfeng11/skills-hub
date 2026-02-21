@@ -6,6 +6,12 @@
       </template>
     </el-page-header>
 
+    <!-- Folder Import (create mode only) -->
+    <el-card v-if="!isEdit" style="margin-top: 20px">
+      <template #header>从文件夹导入</template>
+      <FolderUpload @parsed="handleFolderParsed" />
+    </el-card>
+
     <el-card style="margin-top: 20px">
       <el-form :model="form" label-position="top" style="max-width: 600px">
         <el-form-item label="名称 (kebab-case)" :required="!isEdit">
@@ -57,12 +63,14 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
-import { createSkill, createVersion, getSkill, updateSkill } from '../api'
+import { createSkill, createVersion, getSkill, updateSkill, parseSkillMd } from '../api'
+import FolderUpload from '../components/FolderUpload.vue'
 
 const route = useRoute()
 const router = useRouter()
 const isEdit = computed(() => route.name === 'SkillEdit')
 const saving = ref(false)
+const importedFiles = ref({})
 
 const form = reactive({
   name: '',
@@ -94,6 +102,32 @@ onMounted(async () => {
   }
 })
 
+async function handleFolderParsed({ skillMdContent, files }) {
+  importedFiles.value = files || {}
+
+  if (skillMdContent) {
+    try {
+      const res = await parseSkillMd(skillMdContent)
+      const parsed = res.data
+
+      if (parsed.name) form.name = parsed.name
+      if (parsed.display_name) form.display_name = parsed.display_name
+      if (parsed.description) form.description = parsed.description
+      if (parsed.tags && parsed.tags.length > 0) form.tags = parsed.tags
+      if (parsed.version) initialVersion.version = parsed.version
+      if (parsed.body) {
+        initialVersion.content = skillMdContent
+      }
+
+      ElMessage.success('已从 SKILL.md 导入信息')
+    } catch {
+      // Even if parsing fails, still use the raw content
+      initialVersion.content = skillMdContent
+      ElMessage.warning('SKILL.md 解析失败，已导入原始内容')
+    }
+  }
+}
+
 async function handleSave() {
   if (!form.display_name) {
     ElMessage.warning('请填写显示名称')
@@ -120,10 +154,17 @@ async function handleSave() {
 
       // Create initial version if provided
       if (initialVersion.version && initialVersion.content) {
-        await createVersion(form.name, {
+        const versionData = {
           version: initialVersion.version,
           content: initialVersion.content,
-        })
+        }
+
+        // Include imported files if any
+        if (Object.keys(importedFiles.value).length > 0) {
+          versionData.files = importedFiles.value
+        }
+
+        await createVersion(form.name, versionData)
       }
 
       ElMessage.success('创建成功')

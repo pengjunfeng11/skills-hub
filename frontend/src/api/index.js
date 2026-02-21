@@ -41,6 +41,7 @@ export const deleteSkill = (name) => api.delete(`/skills/${name}`)
 export const getVersions = (name) => api.get(`/skills/${name}/versions`)
 export const getVersion = (name, ver) => api.get(`/skills/${name}/versions/${ver}`)
 export const createVersion = (name, data) => api.post(`/skills/${name}/versions`, data)
+export const parseSkillMd = (content) => api.post('/skills/parse-skill-md', { content })
 
 // Teams
 export const getTeams = () => api.get('/teams')

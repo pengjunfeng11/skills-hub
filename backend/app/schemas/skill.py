@@ -126,3 +126,17 @@ class TeamResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ParseSkillRequest(BaseModel):
+    content: str
+
+
+class ParsedSkillResponse(BaseModel):
+    name: str | None = None
+    display_name: str | None = None
+    description: str | None = None
+    tags: list[str] = []
+    category: str | None = None
+    version: str | None = None
+    body: str | None = None

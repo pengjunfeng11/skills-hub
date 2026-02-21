@@ -73,6 +73,9 @@
     <!-- New Version Dialog -->
     <el-dialog v-model="showVersionDialog" title="发布新版本" width="700px">
       <el-form :model="versionForm" label-position="top">
+        <el-form-item label="从文件夹导入">
+          <FolderUpload @parsed="handleVersionFolderParsed" />
+        </el-form-item>
         <el-form-item label="版本号 (semver)">
           <el-input v-model="versionForm.version" placeholder="1.0.0" />
         </el-form-item>
@@ -98,6 +101,7 @@ import { ElMessage } from 'element-plus'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import { getSkill, getVersions, getVersion, createVersion } from '../api'
+import FolderUpload from '../components/FolderUpload.vue'
 
 const route = useRoute()
 const skillName = route.params.name
@@ -109,6 +113,7 @@ const selectedVersion = ref('')
 const currentContent = ref('')
 const showVersionDialog = ref(false)
 const publishing = ref(false)
+const versionFiles = ref({})
 
 const versionForm = ref({
   version: '',
@@ -163,6 +168,15 @@ async function loadVersion() {
   }
 }
 
+function handleVersionFolderParsed({ skillMdContent, files }) {
+  versionFiles.value = files || {}
+
+  if (skillMdContent) {
+    versionForm.value.content = skillMdContent
+    ElMessage.success('已从文件夹导入内容')
+  }
+}
+
 async function publishVersion() {
   if (!versionForm.value.version || !versionForm.value.content) {
     ElMessage.warning('请填写版本号和内容')
@@ -170,10 +184,18 @@ async function publishVersion() {
   }
   publishing.value = true
   try {
-    await createVersion(skillName, versionForm.value)
+    const data = { ...versionForm.value }
+
+    // Include imported files if any
+    if (Object.keys(versionFiles.value).length > 0) {
+      data.files = versionFiles.value
+    }
+
+    await createVersion(skillName, data)
     ElMessage.success('发布成功')
     showVersionDialog.value = false
     versionForm.value = { version: '', content: '', changelog: '' }
+    versionFiles.value = {}
     loadSkill()
   } catch (err) {
     ElMessage.error(err.response?.data?.detail || '发布失败')
