@@ -130,7 +130,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { MdEditor } from 'md-editor-v3'
@@ -139,7 +139,7 @@ import { getSkill, getVersions, getVersion, createVersion } from '../api'
 import FolderUpload from '../components/FolderUpload.vue'
 
 const route = useRoute()
-const skillName = route.params.name
+const skillName = computed(() => route.params.name)
 
 const loading = ref(false)
 const skill = ref(null)
@@ -177,8 +177,8 @@ async function loadSkill() {
   loading.value = true
   try {
     const [skillRes, versionsRes] = await Promise.all([
-      getSkill(skillName),
-      getVersions(skillName),
+      getSkill(skillName.value),
+      getVersions(skillName.value),
     ])
     skill.value = skillRes.data
     versions.value = versionsRes.data
@@ -198,7 +198,7 @@ async function loadSkill() {
 async function loadVersion() {
   if (!selectedVersion.value) return
   try {
-    const res = await getVersion(skillName, selectedVersion.value)
+    const res = await getVersion(skillName.value, selectedVersion.value)
     currentContent.value = res.data.content
     currentFiles.value = res.data.files || {}
     activeTab.value = 'skill-md'
@@ -230,7 +230,7 @@ async function publishVersion() {
       data.files = versionFiles.value
     }
 
-    await createVersion(skillName, data)
+    await createVersion(skillName.value, data)
     ElMessage.success('发布成功')
     showVersionDialog.value = false
     versionForm.value = { version: '', content: '', changelog: '' }
@@ -244,6 +244,12 @@ async function publishVersion() {
 }
 
 onMounted(loadSkill)
+
+watch(skillName, (newName, oldName) => {
+  if (newName && newName !== oldName) {
+    loadSkill()
+  }
+})
 </script>
 
 <style scoped>

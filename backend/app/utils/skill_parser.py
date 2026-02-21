@@ -4,7 +4,19 @@ import frontmatter
 
 def parse_skill_md(content: str) -> dict:
     """Parse a SKILL.md file, extracting frontmatter metadata and body."""
-    post = frontmatter.loads(content)
+    try:
+        post = frontmatter.loads(content)
+    except Exception:
+        # If frontmatter parsing fails, treat entire content as body
+        return {
+            "metadata": {},
+            "body": content,
+            "name": None,
+            "display_name": None,
+            "description": None,
+            "tags": [],
+            "category": None,
+        }
     return {
         "metadata": dict(post.metadata),
         "body": post.content,

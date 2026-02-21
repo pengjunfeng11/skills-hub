@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div v-loading="loading">
     <h2>概览</h2>
     <el-row :gutter="20" style="margin-top: 20px">
       <el-col :span="8">
@@ -53,8 +53,10 @@ import { getSkills, getApiKeys } from '../api'
 
 const stats = reactive({ totalSkills: 0, publishedSkills: 0, apiKeys: 0 })
 const recentSkills = ref([])
+const loading = ref(false)
 
 onMounted(async () => {
+  loading.value = true
   try {
     const [skillsRes, keysRes] = await Promise.all([
       getSkills({ page: 1, size: 10 }),
@@ -65,5 +67,8 @@ onMounted(async () => {
     stats.apiKeys = keysRes.data.length
     recentSkills.value = skillsRes.data.items.slice(0, 5)
   } catch {}
+  finally {
+    loading.value = false
+  }
 })
 </script>

@@ -115,9 +115,13 @@ async function handleDelete(id) {
   }
 }
 
-function copyKey() {
-  navigator.clipboard.writeText(newKey.value)
-  ElMessage.success('已复制')
+async function copyKey() {
+  try {
+    await navigator.clipboard.writeText(newKey.value)
+    ElMessage.success('已复制')
+  } catch {
+    ElMessage.error('复制失败，请手动复制')
+  }
 }
 
 onMounted(loadKeys)

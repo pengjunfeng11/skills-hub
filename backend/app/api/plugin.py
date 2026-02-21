@@ -34,7 +34,9 @@ async def resolve_skills(
         else:
             name, ver = spec, None
 
-        result = await db.execute(select(Skill).where(Skill.name == name, Skill.is_published == True))
+        result = await db.execute(select(Skill).where(
+            Skill.name == name, Skill.is_published == True, Skill.visibility == "public"
+        ))
         skill = result.scalar_one_or_none()
         if not skill:
             continue
@@ -111,7 +113,9 @@ async def get_skill_raw(
     user: User = Depends(get_api_key_user),
 ):
     """Get raw SKILL.md content for a skill."""
-    result = await db.execute(select(Skill).where(Skill.name == name, Skill.is_published == True))
+    result = await db.execute(select(Skill).where(
+        Skill.name == name, Skill.is_published == True, Skill.visibility == "public"
+    ))
     skill = result.scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")

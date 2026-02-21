@@ -1,23 +1,35 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel
+from enum import Enum
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+
+class VisibilityEnum(str, Enum):
+    public = "public"
+    team = "team"
+    private = "private"
+
+
+VALID_SCOPES = {"read", "write"}
 
 
 class SkillCreate(BaseModel):
-    name: str  # kebab-case
-    display_name: str
-    description: str | None = None
+    name: str = Field(min_length=1, max_length=100)  # kebab-case
+    display_name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(None, max_length=5000)
     category_id: uuid.UUID | None = None
     tags: list[str] = []
-    visibility: str = "public"
+    visibility: VisibilityEnum = VisibilityEnum.public
 
 
 class SkillUpdate(BaseModel):
-    display_name: str | None = None
-    description: str | None = None
+    display_name: str | None = Field(None, min_length=1, max_length=200)
+    description: str | None = Field(None, max_length=5000)
     category_id: uuid.UUID | None = None
     tags: list[str] | None = None
-    visibility: str | None = None
+    visibility: VisibilityEnum | None = None
 
 
 class SkillResponse(BaseModel):
@@ -35,8 +47,6 @@ class SkillResponse(BaseModel):
     updated_at: datetime
     latest_version: str | None = None
 
-    model_config = {"from_attributes": True}
-
 
 class SkillListResponse(BaseModel):
     items: list[SkillResponse]
@@ -44,9 +54,9 @@ class SkillListResponse(BaseModel):
 
 
 class VersionCreate(BaseModel):
-    version: str  # semver
-    content: str  # SKILL.md full text
-    changelog: str | None = None
+    version: str = Field(min_length=1, max_length=50)  # semver
+    content: str = Field(min_length=1, max_length=1_000_000)  # SKILL.md full text, max 1MB
+    changelog: str | None = Field(None, max_length=5000)
     metadata_json: dict | None = None
     files: dict[str, str] | None = None  # path -> content
 
@@ -62,12 +72,10 @@ class VersionResponse(BaseModel):
     published_at: datetime | None = None
     files: dict[str, str] = {}
 
-    model_config = {"from_attributes": True}
-
 
 class ApiKeyCreate(BaseModel):
-    name: str
-    scopes: list[str] = ["read"]
+    name: str = Field(min_length=1, max_length=100)
+    scopes: list[Literal["read", "write"]] = ["read"]
 
 
 class ApiKeyResponse(BaseModel):
@@ -86,7 +94,7 @@ class ApiKeyCreatedResponse(ApiKeyResponse):
 
 # Plugin API schemas
 class ResolveRequest(BaseModel):
-    skills: list[str]  # ["skill-a", "skill-b@1.2.0"]
+    skills: list[str] = Field(min_length=1, max_length=50)  # ["skill-a", "skill-b@1.2.0"]
 
 
 class ResolvedSkill(BaseModel):
@@ -113,9 +121,9 @@ class CatalogResponse(BaseModel):
 
 
 class TeamCreate(BaseModel):
-    name: str
-    slug: str
-    description: str | None = None
+    name: str = Field(min_length=1, max_length=100)
+    slug: str = Field(min_length=1, max_length=100)
+    description: str | None = Field(None, max_length=500)
 
 
 class TeamResponse(BaseModel):
@@ -129,7 +137,7 @@ class TeamResponse(BaseModel):
 
 
 class ParseSkillRequest(BaseModel):
-    content: str
+    content: str = Field(min_length=1, max_length=1_000_000)
 
 
 class ParsedSkillResponse(BaseModel):

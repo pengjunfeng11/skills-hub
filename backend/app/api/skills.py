@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -23,6 +24,11 @@ from app.schemas.skill import (
 from app.utils.skill_parser import parse_skill_md, validate_semver, validate_skill_name
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
+
+
+def _escape_like(s: str) -> str:
+    """Escape special characters for SQL LIKE."""
+    return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _skill_to_response(skill: Skill, latest_version: str | None = None) -> SkillResponse:
@@ -66,8 +72,9 @@ async def list_skills(
         query = query.where(or_(*conditions))
 
     if q:
+        escaped_q = _escape_like(q)
         query = query.where(
-            or_(Skill.name.ilike(f"%{q}%"), Skill.display_name.ilike(f"%{q}%"), Skill.description.ilike(f"%{q}%"))
+            or_(Skill.name.ilike(f"%{escaped_q}%"), Skill.display_name.ilike(f"%{escaped_q}%"), Skill.description.ilike(f"%{escaped_q}%"))
         )
     if tag:
         query = query.where(Skill.tags.contains([tag]))
@@ -111,12 +118,16 @@ async def create_skill(
         description=data.description,
         category_id=data.category_id,
         tags=data.tags,
-        visibility=data.visibility,
+        visibility=data.visibility.value if hasattr(data.visibility, 'value') else data.visibility,
         author_id=user.id,
         team_id=user.team_id,
     )
     db.add(skill)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Skill name already exists")
     await db.refresh(skill)
     return _skill_to_response(skill)
 
@@ -167,6 +178,8 @@ async def update_skill(
     check_skill_edit(skill, user)
 
     for field, value in data.model_dump(exclude_unset=True).items():
+        if field == "visibility" and hasattr(value, "value"):
+            value = value.value
         setattr(skill, field, value)
 
     await db.commit()
@@ -229,18 +242,25 @@ async def create_version(
     # Add files if provided
     if data.files:
         for path, content in data.files.items():
-            if ".." in path or path.startswith("/"):
+            # Normalize and check for path traversal
+            import posixpath
+            normalized = posixpath.normpath(path)
+            if normalized.startswith("/") or normalized.startswith("..") or "/../" in normalized:
                 raise HTTPException(status_code=400, detail=f"Invalid file path: {path}")
             skill_file = SkillFile(
                 skill_version_id=version.id,
-                path=path,
+                path=normalized,
                 content=content,
                 file_type=path.rsplit(".", 1)[-1] if "." in path else None,
             )
             db.add(skill_file)
 
     skill.is_published = True
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Version already exists")
     await db.refresh(version)
 
     files_dict = {}

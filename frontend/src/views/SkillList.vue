@@ -10,10 +10,10 @@
     <el-card>
       <div style="display: flex; gap: 12px; margin-bottom: 16px">
         <el-input v-model="search" placeholder="搜索 Skills..." clearable style="max-width: 300px"
-          @keyup.enter="loadSkills" @clear="loadSkills">
+          @keyup.enter="resetAndLoad" @clear="resetAndLoad">
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
-        <el-select v-model="visibility" placeholder="可见性" clearable @change="loadSkills" style="width: 120px">
+        <el-select v-model="visibility" placeholder="可见性" clearable @change="resetAndLoad" style="width: 120px">
           <el-option label="Public" value="public" />
           <el-option label="Team" value="team" />
           <el-option label="Private" value="private" />
@@ -90,6 +90,11 @@ async function loadSkills() {
   } finally {
     loading.value = false
   }
+}
+
+function resetAndLoad() {
+  page.value = 1
+  loadSkills()
 }
 
 async function handleDelete(name) {

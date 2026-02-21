@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Text, ForeignKey, DateTime, Boolean, func, JSON, Uuid
+from sqlalchemy import String, Text, ForeignKey, DateTime, Boolean, func, JSON, Uuid, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -26,11 +26,14 @@ class Skill(Base):
     author = relationship("User", back_populates="skills")
     team = relationship("Team", back_populates="skills")
     category = relationship("Category")
-    versions = relationship("SkillVersion", back_populates="skill", order_by="SkillVersion.created_at.desc()")
+    versions = relationship("SkillVersion", back_populates="skill", cascade="all, delete-orphan", order_by="SkillVersion.created_at.desc()")
 
 
 class SkillVersion(Base):
     __tablename__ = "skill_versions"
+    __table_args__ = (
+        UniqueConstraint("skill_id", "version", name="uq_skill_version"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     skill_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("skills.id", ondelete="CASCADE"))

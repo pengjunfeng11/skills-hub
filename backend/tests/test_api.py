@@ -126,19 +126,19 @@ class TestAuth:
 
     async def test_register_duplicate_username(self, client: AsyncClient):
         await client.post("/api/auth/register", json={
-            "username": "dup", "email": "a@a.com", "password": "p",
+            "username": "dup", "email": "a@a.com", "password": "password123",
         })
         resp = await client.post("/api/auth/register", json={
-            "username": "dup", "email": "b@b.com", "password": "p",
+            "username": "dup", "email": "b@b.com", "password": "password123",
         })
         assert resp.status_code == 409
 
     async def test_register_duplicate_email(self, client: AsyncClient):
         await client.post("/api/auth/register", json={
-            "username": "u1", "email": "same@test.com", "password": "p",
+            "username": "u1", "email": "same@test.com", "password": "password123",
         })
         resp = await client.post("/api/auth/register", json={
-            "username": "u2", "email": "same@test.com", "password": "p",
+            "username": "u2", "email": "same@test.com", "password": "password123",
         })
         assert resp.status_code == 409
 

@@ -87,6 +87,10 @@ async def get_api_key_user(
     if api_key.expires_at and api_key.expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key expired")
 
+    # Check read scope (all plugin endpoints need at least read)
+    if "read" not in (api_key.scopes or []):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="API key lacks 'read' scope")
+
     result = await db.execute(select(User).where(User.id == api_key.user_id))
     user = result.scalar_one_or_none()
     if user is None:

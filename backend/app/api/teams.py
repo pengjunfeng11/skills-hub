@@ -27,9 +27,10 @@ async def create_team(
     await db.commit()
     await db.refresh(team)
 
-    # Add creator to team
-    user.team_id = team.id
-    await db.commit()
+    # Add creator to team (only if they don't already belong to one)
+    if user.team_id is None:
+        user.team_id = team.id
+        await db.commit()
 
     return team
 
