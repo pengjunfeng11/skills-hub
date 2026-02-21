@@ -6,4 +6,5 @@ dist/
 .env
 node_modules/
 frontend/dist/
-*.lock
+test.db
+.pytest_cache/

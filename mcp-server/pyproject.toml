@@ -1,0 +1,16 @@
+[project]
+name = "skills-hub-mcp"
+version = "0.1.0"
+description = "Skills Hub MCP Server - Claude Code integration"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=1.0.0",
+    "httpx>=0.28.0",
+]
+
+[project.scripts]
+skills-hub-mcp = "skills_hub_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
