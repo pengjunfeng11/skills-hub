@@ -17,9 +17,13 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      const auth = useAuthStore()
-      auth.logout()
-      window.location.href = '/login'
+      const url = err.config?.url || ''
+      // Don't redirect on login/register failures — let the page show the error
+      if (!url.includes('/auth/login') && !url.includes('/auth/register')) {
+        const auth = useAuthStore()
+        auth.logout()
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(err)
   }
