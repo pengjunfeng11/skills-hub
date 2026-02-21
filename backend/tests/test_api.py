@@ -70,7 +70,7 @@ async def auth_header(client: AsyncClient):
 @pytest_asyncio.fixture
 async def api_key_header(client: AsyncClient, auth_header: dict):
     """Create an API key and return header for plugin API."""
-    resp = await client.post("/api/keys", json={"name": "test-key"}, headers=auth_header)
+    resp = await client.post("/api/keys", json={"name": "test-key", "allowed_tags": ["test", "demo"]}, headers=auth_header)
     key = resp.json()["key"]
     return {"Authorization": f"Bearer {key}"}
 

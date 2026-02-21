@@ -76,16 +76,27 @@ class VersionResponse(BaseModel):
 class ApiKeyCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     scopes: list[Literal["read", "write"]] = ["read"]
+    allowed_tags: list[str] = []
+
+
+class ApiKeyUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=100)
+    allowed_tags: list[str] | None = None
 
 
 class ApiKeyResponse(BaseModel):
     id: uuid.UUID
     name: str
     scopes: list[str]
+    allowed_tags: list[str] = []
     created_at: datetime
     expires_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class ApiKeyDetailResponse(ApiKeyResponse):
+    key: str | None = None  # decrypted original key, None for legacy keys
 
 
 class ApiKeyCreatedResponse(ApiKeyResponse):

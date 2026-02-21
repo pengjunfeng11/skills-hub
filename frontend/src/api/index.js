@@ -53,7 +53,9 @@ export const createTeam = (data) => api.post('/teams', data)
 
 // API Keys
 export const getApiKeys = () => api.get('/keys')
+export const getApiKeyDetail = (id) => api.get(`/keys/${id}`)
 export const createApiKey = (data) => api.post('/keys', data)
+export const updateApiKey = (id, data) => api.put(`/keys/${id}`, data)
 export const deleteApiKey = (id) => api.delete(`/keys/${id}`)
 
 // Stats

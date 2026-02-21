@@ -20,6 +20,11 @@ from app.schemas.skill import (
 router = APIRouter(prefix="/api/v1/skills", tags=["plugin"])
 
 
+def _tags_match(skill_tags: list[str], allowed_tags: list[str]) -> bool:
+    """Check if a skill's tags intersect with allowed tags."""
+    return bool(set(skill_tags or []) & set(allowed_tags))
+
+
 @router.post("/resolve", response_model=ResolveResponse)
 async def resolve_skills(
     data: ResolveRequest,
@@ -28,6 +33,12 @@ async def resolve_skills(
 ):
     """Batch resolve skills by name, optionally with version pinning."""
     user, api_key = auth
+    allowed_tags = api_key.allowed_tags or []
+
+    # No tags bound → return empty
+    if not allowed_tags:
+        return ResolveResponse(skills=[])
+
     resolved = []
 
     for spec in data.skills:
@@ -42,6 +53,10 @@ async def resolve_skills(
         ))
         skill = result.scalar_one_or_none()
         if not skill:
+            continue
+
+        # Tag filtering
+        if not _tags_match(skill.tags, allowed_tags):
             continue
 
         # Get specific version or latest
@@ -96,6 +111,12 @@ async def catalog(
 ):
     """List all published skills with their latest version."""
     user, api_key = auth
+    allowed_tags = api_key.allowed_tags or []
+
+    # No tags bound → return empty
+    if not allowed_tags:
+        return CatalogResponse(skills=[])
+
     result = await db.execute(
         select(Skill)
         .where(Skill.is_published == True, Skill.visibility == "public")
@@ -106,6 +127,10 @@ async def catalog(
 
     items = []
     for skill in skills:
+        # Tag filtering
+        if not _tags_match(skill.tags, allowed_tags):
+            continue
+
         latest = skill.versions[0] if skill.versions else None
         if latest:
             items.append(
@@ -138,12 +163,22 @@ async def get_skill_raw(
 ):
     """Get raw SKILL.md content for a skill."""
     user, api_key = auth
+    allowed_tags = api_key.allowed_tags or []
+
+    # No tags bound → deny access
+    if not allowed_tags:
+        raise HTTPException(status_code=403, detail="API key has no allowed tags")
+
     result = await db.execute(select(Skill).where(
         Skill.name == name, Skill.is_published == True, Skill.visibility == "public"
     ))
     skill = result.scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
+
+    # Tag filtering
+    if not _tags_match(skill.tags, allowed_tags):
+        raise HTTPException(status_code=403, detail="Skill not allowed by API key tags")
 
     if version:
         ver_result = await db.execute(
