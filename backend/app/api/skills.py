@@ -6,10 +6,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.permissions import check_skill_access, check_skill_edit
+from app.core.permissions import check_skill_access, check_skill_edit, get_user_team_ids
 from app.core.security import get_current_user
 from app.database import get_db
 from app.models.skill import Skill, SkillFile, SkillVersion
+from app.models.subscription import SkillSubscription
+from app.models.team_member import TeamMember
 from app.models.user import User
 from app.schemas.skill import (
     ParseSkillRequest,
@@ -31,7 +33,13 @@ def _escape_like(s: str) -> str:
     return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def _skill_to_response(skill: Skill, latest_version: str | None = None) -> SkillResponse:
+def _skill_to_response(
+    skill: Skill,
+    latest_version: str | None = None,
+    is_subscribed: bool | None = None,
+    subscription_enabled: bool | None = None,
+    author_username: str | None = None,
+) -> SkillResponse:
     return SkillResponse(
         id=skill.id,
         name=skill.name,
@@ -41,11 +49,14 @@ def _skill_to_response(skill: Skill, latest_version: str | None = None) -> Skill
         visibility=skill.visibility,
         is_published=skill.is_published,
         author_id=skill.author_id,
+        author_username=author_username or (skill.author.username if skill.author else None),
         team_id=skill.team_id,
         category_id=skill.category_id,
         created_at=skill.created_at,
         updated_at=skill.updated_at,
         latest_version=latest_version,
+        is_subscribed=is_subscribed,
+        subscription_enabled=subscription_enabled,
     )
 
 
@@ -61,10 +72,11 @@ async def list_skills(
 ):
     query = select(Skill)
 
-    # Filter by visibility: show public, user's own, and team skills
+    # Filter by visibility: show public, user's own, and team skills (multi-team)
+    user_team_ids = get_user_team_ids(user)
     conditions = [Skill.visibility == "public", Skill.author_id == user.id]
-    if user.team_id:
-        conditions.append((Skill.visibility == "team") & (Skill.team_id == user.team_id))
+    if user_team_ids:
+        conditions.append((Skill.visibility == "team") & Skill.team_id.in_(user_team_ids))
     if user.role == "admin":
         conditions = []  # admin sees all
         query = select(Skill)
@@ -87,14 +99,33 @@ async def list_skills(
 
     # Paginate
     query = query.order_by(Skill.updated_at.desc()).offset((page - 1) * size).limit(size)
-    query = query.options(selectinload(Skill.versions))
+    query = query.options(selectinload(Skill.versions), selectinload(Skill.author))
     result = await db.execute(query)
     skills = result.scalars().all()
+
+    # Batch fetch subscriptions for these skills
+    skill_ids = [s.id for s in skills]
+    sub_map = {}
+    if skill_ids:
+        sub_result = await db.execute(
+            select(SkillSubscription).where(
+                SkillSubscription.user_id == user.id,
+                SkillSubscription.skill_id.in_(skill_ids),
+            )
+        )
+        for sub in sub_result.scalars().all():
+            sub_map[sub.skill_id] = sub
 
     items = []
     for skill in skills:
         latest = skill.versions[0].version if skill.versions else None
-        items.append(_skill_to_response(skill, latest))
+        sub = sub_map.get(skill.id)
+        items.append(_skill_to_response(
+            skill,
+            latest,
+            is_subscribed=sub is not None if sub_map is not None else None,
+            subscription_enabled=sub.enabled if sub else None,
+        ))
 
     return SkillListResponse(items=items, total=total)
 
@@ -112,6 +143,17 @@ async def create_skill(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Skill name already exists")
 
+    # Validate team_id: user must be a member of the team
+    team_id = data.team_id
+    if team_id:
+        user_team_ids = get_user_team_ids(user)
+        if team_id not in user_team_ids:
+            raise HTTPException(status_code=403, detail="You are not a member of this team")
+    else:
+        # Default: pick first team if user has one
+        if user.team_memberships:
+            team_id = user.team_memberships[0].team_id
+
     skill = Skill(
         name=data.name,
         display_name=data.display_name,
@@ -120,16 +162,22 @@ async def create_skill(
         tags=data.tags,
         visibility=data.visibility.value if hasattr(data.visibility, 'value') else data.visibility,
         author_id=user.id,
-        team_id=user.team_id,
+        team_id=team_id,
     )
     db.add(skill)
     try:
-        await db.commit()
+        await db.flush()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=409, detail="Skill name already exists")
+
+    # Auto-subscribe the author
+    subscription = SkillSubscription(user_id=user.id, skill_id=skill.id, enabled=True)
+    db.add(subscription)
+
+    await db.commit()
     await db.refresh(skill)
-    return _skill_to_response(skill)
+    return _skill_to_response(skill, is_subscribed=True, subscription_enabled=True, author_username=user.username)
 
 
 @router.post("/parse-skill-md", response_model=ParsedSkillResponse)
@@ -155,13 +203,27 @@ async def get_skill(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Skill).where(Skill.name == name).options(selectinload(Skill.versions)))
+    result = await db.execute(select(Skill).where(Skill.name == name).options(selectinload(Skill.versions), selectinload(Skill.author)))
     skill = result.scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
     check_skill_access(skill, user)
+
+    # Check subscription
+    sub_result = await db.execute(
+        select(SkillSubscription).where(
+            SkillSubscription.user_id == user.id,
+            SkillSubscription.skill_id == skill.id,
+        )
+    )
+    sub = sub_result.scalar_one_or_none()
+
     latest = skill.versions[0].version if skill.versions else None
-    return _skill_to_response(skill, latest)
+    return _skill_to_response(
+        skill, latest,
+        is_subscribed=sub is not None,
+        subscription_enabled=sub.enabled if sub else None,
+    )
 
 
 @router.put("/{name}", response_model=SkillResponse)
@@ -200,6 +262,63 @@ async def delete_skill(
     check_skill_edit(skill, user)
     await db.delete(skill)
     await db.commit()
+
+
+# --- Subscribe / Unsubscribe ---
+
+
+@router.post("/{name}/subscribe", status_code=status.HTTP_200_OK)
+async def subscribe_skill(
+    name: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    result = await db.execute(select(Skill).where(Skill.name == name))
+    skill = result.scalar_one_or_none()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    check_skill_access(skill, user)
+
+    sub_result = await db.execute(
+        select(SkillSubscription).where(
+            SkillSubscription.user_id == user.id,
+            SkillSubscription.skill_id == skill.id,
+        )
+    )
+    sub = sub_result.scalar_one_or_none()
+    if sub:
+        sub.enabled = True
+    else:
+        sub = SkillSubscription(user_id=user.id, skill_id=skill.id, enabled=True)
+        db.add(sub)
+
+    await db.commit()
+    return {"detail": "Subscribed", "enabled": True}
+
+
+@router.delete("/{name}/subscribe", status_code=status.HTTP_200_OK)
+async def unsubscribe_skill(
+    name: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    result = await db.execute(select(Skill).where(Skill.name == name))
+    skill = result.scalar_one_or_none()
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+
+    sub_result = await db.execute(
+        select(SkillSubscription).where(
+            SkillSubscription.user_id == user.id,
+            SkillSubscription.skill_id == skill.id,
+        )
+    )
+    sub = sub_result.scalar_one_or_none()
+    if sub:
+        sub.enabled = False
+        await db.commit()
+
+    return {"detail": "Unsubscribed", "enabled": False}
 
 
 # --- Versions ---

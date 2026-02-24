@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, ForeignKey, DateTime, func, Uuid
+from sqlalchemy import String, DateTime, func, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -15,9 +15,9 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(20), default="member")  # admin / member
-    team_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("teams.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    team = relationship("Team", back_populates="members")
+    team_memberships = relationship("TeamMember", back_populates="user", cascade="all, delete-orphan")
+    subscriptions = relationship("SkillSubscription", back_populates="user", cascade="all, delete-orphan")
     skills = relationship("Skill", back_populates="author")
     api_keys = relationship("ApiKey", back_populates="user")

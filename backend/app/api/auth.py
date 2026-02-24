@@ -1,13 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.core.security import create_access_token, get_current_user, hash_password, verify_password
 from app.database import get_db
 from app.models.user import User
+from app.models.team_member import TeamMember
 from app.schemas.auth import LoginRequest, TokenResponse
-from app.schemas.user import UserCreate, UserResponse
+from app.schemas.user import UserCreate, UserResponse, UserTeamInfo
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -31,7 +33,14 @@ async def register(data: UserCreate, db: AsyncSession = Depends(get_db)):
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    return user
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        role=user.role,
+        teams=[],
+        created_at=user.created_at,
+    )
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -46,5 +55,33 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserResponse)
-async def me(user: User = Depends(get_current_user)):
-    return user
+async def me(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Load team memberships with team details
+    result = await db.execute(
+        select(TeamMember).where(TeamMember.user_id == user.id).options(
+            selectinload(TeamMember.team)
+        )
+    )
+    memberships = result.scalars().all()
+
+    teams = [
+        UserTeamInfo(
+            team_id=m.team_id,
+            team_name=m.team.name,
+            team_slug=m.team.slug,
+            role=m.role,
+        )
+        for m in memberships
+    ]
+
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        role=user.role,
+        teams=teams,
+        created_at=user.created_at,
+    )

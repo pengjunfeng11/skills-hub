@@ -22,6 +22,7 @@ class SkillCreate(BaseModel):
     category_id: uuid.UUID | None = None
     tags: list[str] = []
     visibility: VisibilityEnum = VisibilityEnum.public
+    team_id: uuid.UUID | None = None
 
 
 class SkillUpdate(BaseModel):
@@ -45,7 +46,10 @@ class SkillResponse(BaseModel):
     category_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
+    author_username: str | None = None
     latest_version: str | None = None
+    is_subscribed: bool | None = None
+    subscription_enabled: bool | None = None
 
 
 class SkillListResponse(BaseModel):
@@ -145,6 +149,21 @@ class TeamResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class TeamMemberResponse(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    username: str
+    role: str
+    joined_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TeamDetailResponse(TeamResponse):
+    members: list[TeamMemberResponse] = []
+    my_role: str | None = None
 
 
 class ParseSkillRequest(BaseModel):

@@ -12,10 +12,19 @@ class UserCreate(UserBase):
     password: str = Field(min_length=6, max_length=128)
 
 
+class UserTeamInfo(BaseModel):
+    team_id: uuid.UUID
+    team_name: str
+    team_slug: str
+    role: str
+
+    model_config = {"from_attributes": True}
+
+
 class UserResponse(UserBase):
     id: uuid.UUID
     role: str
-    team_id: uuid.UUID | None = None
+    teams: list[UserTeamInfo] = []
     created_at: datetime
 
     model_config = {"from_attributes": True}

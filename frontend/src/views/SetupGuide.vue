@@ -1,126 +1,160 @@
 <template>
   <div>
-    <h2>集成指南</h2>
-    <p style="color: #606266">配置 Claude Code 与 Skills Hub 的集成（Hook + MCP Server）</p>
+    <h1 class="text-2xl font-bold text-gray-900 mb-2">集成指南</h1>
+    <p class="text-gray-500 mb-6">配置 Claude Code 与 Skills Hub 的集成（Hook + MCP Server）</p>
 
-    <el-steps :active="activeStep" finish-status="success" style="margin: 24px 0">
-      <el-step title="获取 API Key" />
-      <el-step title="一键配置" />
-      <el-step title="手动配置" />
-      <el-step title="验证" />
-    </el-steps>
+    <!-- Steps indicator -->
+    <div class="flex items-center gap-0 mb-8">
+      <template v-for="(step, i) in steps" :key="i">
+        <div
+          @click="activeStep = i"
+          class="flex items-center gap-2 cursor-pointer"
+        >
+          <div
+            :class="[
+              'w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors',
+              i <= activeStep ? 'bg-primary text-white' : 'bg-gray-200 text-gray-500'
+            ]"
+          >{{ i + 1 }}</div>
+          <span :class="['text-sm font-medium', i <= activeStep ? 'text-gray-900' : 'text-gray-400']">{{ step }}</span>
+        </div>
+        <div v-if="i < steps.length - 1" :class="['flex-1 h-px mx-3', i < activeStep ? 'bg-primary' : 'bg-gray-200']"></div>
+      </template>
+    </div>
 
     <!-- Step 1: API Key -->
-    <el-card v-show="activeStep >= 0" style="margin-bottom: 16px">
-      <template #header>
-        <div style="display: flex; align-items: center; justify-content: space-between">
-          <span>Step 1 - 获取 API Key</span>
-          <el-button text type="primary" @click="activeStep = 1" v-if="activeStep === 0">下一步</el-button>
-        </div>
-      </template>
-      <p style="margin-top: 0">前往 <router-link to="/settings">设置页面</router-link> 创建一个 API Key，用于 Claude Code 访问 Skills Hub。</p>
-      <el-alert type="info" :closable="false">
-        创建后请立即复制保存 API Key，关闭弹窗后将无法再次查看。
-      </el-alert>
-    </el-card>
-
-    <!-- Step 2: 一键配置 -->
-    <el-card v-show="activeStep >= 1" style="margin-bottom: 16px">
-      <template #header>
-        <div style="display: flex; align-items: center; justify-content: space-between">
-          <span>Step 2 - 一键配置（推荐）</span>
-          <el-button text type="primary" @click="activeStep = 2" v-if="activeStep === 1">下一步</el-button>
-        </div>
-      </template>
-      <p style="margin-top: 0">在 Skills Hub 项目根目录下执行配置脚本：</p>
-      <div class="code-block">
-        <code>bash setup-claude.sh</code>
-        <el-button text size="small" @click="copy('bash setup-claude.sh')">
-          <el-icon><CopyDocument /></el-icon>
-        </el-button>
+    <div v-show="activeStep >= 0" class="bg-white rounded-2xl border border-gray-200 shadow-card mb-4">
+      <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+        <span class="font-semibold text-gray-900">Step 1 - 获取 API Key</span>
+        <button v-if="activeStep === 0" @click="activeStep = 1" class="text-sm text-primary font-medium hover:underline cursor-pointer bg-transparent border-none">下一步</button>
       </div>
-      <p>脚本会交互式引导你完成 Hook、MCP Server 和环境变量的配置。</p>
-    </el-card>
-
-    <!-- Step 3: 手动配置 -->
-    <el-card v-show="activeStep >= 2" style="margin-bottom: 16px">
-      <template #header>
-        <div style="display: flex; align-items: center; justify-content: space-between">
-          <span>Step 3 - 手动配置（可选）</span>
-          <el-button text type="primary" @click="activeStep = 3" v-if="activeStep === 2">下一步</el-button>
+      <div class="p-6">
+        <p class="text-sm text-gray-600 mt-0">前往 <router-link to="/settings" class="text-primary font-medium">设置页面</router-link> 创建一个 API Key，用于 Claude Code 访问 Skills Hub。</p>
+        <div class="mt-3 p-3 bg-blue-50 text-blue-700 text-sm rounded-xl flex items-start gap-2">
+          <span class="material-icons-round text-[18px] mt-0.5">info</span>
+          创建后请立即复制保存 API Key，关闭弹窗后将无法再次查看。
         </div>
-      </template>
-      <p style="margin-top: 0">如果你更喜欢手动配置，可以按以下步骤操作：</p>
-
-      <el-tabs>
-        <el-tab-pane label="Hook 脚本">
-          <p>创建 <code>~/.claude/hooks/fetch-skills.sh</code>：</p>
-          <div class="code-block">
-            <pre>{{ hookScript }}</pre>
-            <el-button text size="small" @click="copy(hookScript)">
-              <el-icon><CopyDocument /></el-icon>
-            </el-button>
-          </div>
-
-          <p>在 <code>~/.claude/settings.json</code> 中添加 Hook 配置：</p>
-          <div class="code-block">
-            <pre>{{ hookConfig }}</pre>
-            <el-button text size="small" @click="copy(hookConfig)">
-              <el-icon><CopyDocument /></el-icon>
-            </el-button>
-          </div>
-        </el-tab-pane>
-
-        <el-tab-pane label="MCP Server">
-          <p>在 <code>~/.claude.json</code> 中添加 MCP Server 配置：</p>
-          <div class="code-block">
-            <pre>{{ mcpConfig }}</pre>
-            <el-button text size="small" @click="copy(mcpConfig)">
-              <el-icon><CopyDocument /></el-icon>
-            </el-button>
-          </div>
-        </el-tab-pane>
-
-        <el-tab-pane label="环境变量">
-          <p>在 <code>~/.bashrc</code> 或 <code>~/.zshrc</code> 中添加：</p>
-          <div class="code-block">
-            <pre>{{ envConfig }}</pre>
-            <el-button text size="small" @click="copy(envConfig)">
-              <el-icon><CopyDocument /></el-icon>
-            </el-button>
-          </div>
-          <p>添加后执行 <code>source ~/.bashrc</code> 使其生效。</p>
-        </el-tab-pane>
-      </el-tabs>
-    </el-card>
-
-    <!-- Step 4: 验证 -->
-    <el-card v-show="activeStep >= 3">
-      <template #header>Step 4 - 验证配置</template>
-      <p style="margin-top: 0">执行以下命令验证 API 连接是否正常：</p>
-      <div class="code-block">
-        <pre>{{ verifyCommand }}</pre>
-        <el-button text size="small" @click="copy(verifyCommand)">
-          <el-icon><CopyDocument /></el-icon>
-        </el-button>
       </div>
-      <p>如果返回 JSON 数据（Skills 列表），说明配置成功。</p>
-      <el-alert type="success" :closable="false">
-        配置完成后，重启 Claude Code 即可使用 Skills Hub 集成。
-      </el-alert>
-    </el-card>
+    </div>
+
+    <!-- Step 2 -->
+    <div v-show="activeStep >= 1" class="bg-white rounded-2xl border border-gray-200 shadow-card mb-4">
+      <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+        <span class="font-semibold text-gray-900">Step 2 - 一键配置（推荐）</span>
+        <button v-if="activeStep === 1" @click="activeStep = 2" class="text-sm text-primary font-medium hover:underline cursor-pointer bg-transparent border-none">下一步</button>
+      </div>
+      <div class="p-6">
+        <p class="text-sm text-gray-600 mt-0">在 Skills Hub 项目根目录下执行配置脚本：</p>
+        <div class="mt-3 flex items-center justify-between bg-gray-900 text-gray-100 rounded-xl px-4 py-3 font-mono text-sm">
+          <code>bash setup-claude.sh</code>
+          <button @click="copy('bash setup-claude.sh')" class="text-gray-400 hover:text-white cursor-pointer bg-transparent border-none ml-3">
+            <span class="material-icons-round text-[18px]">content_copy</span>
+          </button>
+        </div>
+        <p class="text-sm text-gray-500 mt-3">脚本会交互式引导你完成 Hook、MCP Server 和环境变量的配置。</p>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div v-show="activeStep >= 2" class="bg-white rounded-2xl border border-gray-200 shadow-card mb-4">
+      <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+        <span class="font-semibold text-gray-900">Step 3 - 手动配置（可选）</span>
+        <button v-if="activeStep === 2" @click="activeStep = 3" class="text-sm text-primary font-medium hover:underline cursor-pointer bg-transparent border-none">下一步</button>
+      </div>
+      <div class="p-6">
+        <p class="text-sm text-gray-600 mt-0 mb-4">如果你更喜欢手动配置，可以按以下步骤操作：</p>
+
+        <!-- Sub-tabs -->
+        <div class="flex border-b border-gray-200 gap-1 mb-4">
+          <button
+            v-for="tab in ['Hook 脚本', 'MCP Server', '环境变量']"
+            :key="tab"
+            @click="configTab = tab"
+            :class="[
+              'px-3 py-2 text-sm font-medium border-b-2 transition-colors cursor-pointer',
+              configTab === tab ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'
+            ]"
+          >{{ tab }}</button>
+        </div>
+
+        <!-- Hook -->
+        <div v-show="configTab === 'Hook 脚本'">
+          <p class="text-sm text-gray-600 mb-2">创建 <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">~/.claude/hooks/fetch-skills.sh</code>：</p>
+          <div class="relative bg-gray-900 text-gray-100 rounded-xl px-4 py-3 font-mono text-xs leading-relaxed overflow-x-auto mb-4">
+            <button @click="copy(hookScript)" class="absolute top-2 right-2 text-gray-400 hover:text-white cursor-pointer bg-transparent border-none">
+              <span class="material-icons-round text-[16px]">content_copy</span>
+            </button>
+            <pre class="m-0 whitespace-pre-wrap">{{ hookScript }}</pre>
+          </div>
+          <p class="text-sm text-gray-600 mb-2">在 <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">~/.claude/settings.json</code> 中添加：</p>
+          <div class="relative bg-gray-900 text-gray-100 rounded-xl px-4 py-3 font-mono text-xs leading-relaxed overflow-x-auto">
+            <button @click="copy(hookConfig)" class="absolute top-2 right-2 text-gray-400 hover:text-white cursor-pointer bg-transparent border-none">
+              <span class="material-icons-round text-[16px]">content_copy</span>
+            </button>
+            <pre class="m-0 whitespace-pre-wrap">{{ hookConfig }}</pre>
+          </div>
+        </div>
+
+        <!-- MCP -->
+        <div v-show="configTab === 'MCP Server'">
+          <p class="text-sm text-gray-600 mb-2">在 <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">~/.claude.json</code> 中添加：</p>
+          <div class="relative bg-gray-900 text-gray-100 rounded-xl px-4 py-3 font-mono text-xs leading-relaxed overflow-x-auto">
+            <button @click="copy(mcpConfig)" class="absolute top-2 right-2 text-gray-400 hover:text-white cursor-pointer bg-transparent border-none">
+              <span class="material-icons-round text-[16px]">content_copy</span>
+            </button>
+            <pre class="m-0 whitespace-pre-wrap">{{ mcpConfig }}</pre>
+          </div>
+        </div>
+
+        <!-- Env -->
+        <div v-show="configTab === '环境变量'">
+          <p class="text-sm text-gray-600 mb-2">在 <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">~/.bashrc</code> 或 <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">~/.zshrc</code> 中添加：</p>
+          <div class="relative bg-gray-900 text-gray-100 rounded-xl px-4 py-3 font-mono text-xs leading-relaxed overflow-x-auto">
+            <button @click="copy(envConfig)" class="absolute top-2 right-2 text-gray-400 hover:text-white cursor-pointer bg-transparent border-none">
+              <span class="material-icons-round text-[16px]">content_copy</span>
+            </button>
+            <pre class="m-0 whitespace-pre-wrap">{{ envConfig }}</pre>
+          </div>
+          <p class="text-sm text-gray-500 mt-3">添加后执行 <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">source ~/.bashrc</code> 使其生效。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 4 -->
+    <div v-show="activeStep >= 3" class="bg-white rounded-2xl border border-gray-200 shadow-card">
+      <div class="px-6 py-4 border-b border-gray-100">
+        <span class="font-semibold text-gray-900">Step 4 - 验证配置</span>
+      </div>
+      <div class="p-6">
+        <p class="text-sm text-gray-600 mt-0">执行以下命令验证 API 连接是否正常：</p>
+        <div class="mt-3 relative bg-gray-900 text-gray-100 rounded-xl px-4 py-3 font-mono text-xs leading-relaxed overflow-x-auto">
+          <button @click="copy(verifyCommand)" class="absolute top-2 right-2 text-gray-400 hover:text-white cursor-pointer bg-transparent border-none">
+            <span class="material-icons-round text-[16px]">content_copy</span>
+          </button>
+          <pre class="m-0 whitespace-pre-wrap">{{ verifyCommand }}</pre>
+        </div>
+        <p class="text-sm text-gray-500 mt-3">如果返回 JSON 数据（Skills 列表），说明配置成功。</p>
+        <div class="mt-3 p-3 bg-green-50 text-green-700 text-sm rounded-xl flex items-start gap-2">
+          <span class="material-icons-round text-[18px] mt-0.5">check_circle</span>
+          配置完成后，重启 Claude Code 即可使用 Skills Hub 集成。
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue'
-import { ElMessage } from 'element-plus'
+import { useToast } from '../composables/useToast'
 
+const toast = useToast()
 const activeStep = ref(0)
+const configTab = ref('Hook 脚本')
+
+const steps = ['获取 API Key', '一键配置', '手动配置', '验证']
 
 const backendUrl = computed(() => {
   const loc = window.location
-  // 推断后端地址：同 host，端口 8000
   return `${loc.protocol}//${loc.hostname}:8000`
 })
 
@@ -183,37 +217,9 @@ const verifyCommand = computed(() =>
 async function copy(text) {
   try {
     await navigator.clipboard.writeText(text)
-    ElMessage.success('已复制')
+    toast.success('已复制')
   } catch {
-    ElMessage.error('复制失败，请手动复制')
+    toast.error('复制失败，请手动复制')
   }
 }
 </script>
-
-<style scoped>
-.code-block {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  background: #f5f7fa;
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
-  padding: 12px 16px;
-  margin: 8px 0 16px;
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 13px;
-  line-height: 1.6;
-  overflow-x: auto;
-}
-
-.code-block pre {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-all;
-  flex: 1;
-}
-
-.code-block code {
-  flex: 1;
-}
-</style>

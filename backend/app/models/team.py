@@ -16,5 +16,5 @@ class Team(Base):
     description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    members = relationship("User", back_populates="team")
+    team_members = relationship("TeamMember", back_populates="team", cascade="all, delete-orphan")
     skills = relationship("Skill", back_populates="team")

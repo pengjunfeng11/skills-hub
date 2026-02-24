@@ -1,54 +1,89 @@
 <template>
-  <el-container style="min-height: 100vh">
-    <el-aside width="220px" style="background: #304156">
-      <div style="padding: 20px; text-align: center; color: #fff; font-size: 18px; font-weight: bold;">
-        Skills Hub
+  <div class="flex h-screen overflow-hidden bg-gray-50">
+    <!-- Sidebar -->
+    <aside class="w-64 bg-white border-r border-gray-200 flex flex-col shrink-0">
+      <!-- Logo -->
+      <div class="h-16 flex items-center px-6 border-b border-gray-100">
+        <span class="material-icons-round text-primary text-[28px] mr-2">hub</span>
+        <span class="text-lg font-bold text-gray-900">Skills Hub</span>
       </div>
-      <el-menu
-        :default-active="activeMenu"
-        background-color="#304156"
-        text-color="#bfcbd9"
-        active-text-color="#409eff"
-        router
-      >
-        <el-menu-item index="/">
-          <el-icon><Odometer /></el-icon>
-          <span>概览</span>
-        </el-menu-item>
-        <el-menu-item index="/skills">
-          <el-icon><Document /></el-icon>
-          <span>Skills</span>
-        </el-menu-item>
-        <el-menu-item index="/teams">
-          <el-icon><UserFilled /></el-icon>
-          <span>团队</span>
-        </el-menu-item>
-        <el-menu-item index="/settings">
-          <el-icon><Setting /></el-icon>
-          <span>设置</span>
-        </el-menu-item>
-        <el-menu-item index="/setup">
-          <el-icon><Connection /></el-icon>
-          <span>集成指南</span>
-        </el-menu-item>
-      </el-menu>
-    </el-aside>
 
-    <el-container>
-      <el-header style="display: flex; align-items: center; justify-content: flex-end; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.08)">
-        <span style="margin-right: 16px">{{ auth.user?.username }}</span>
-        <el-button text @click="handleLogout">退出</el-button>
-      </el-header>
+      <!-- Nav -->
+      <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <router-link
+          v-for="item in navItems"
+          :key="item.path"
+          :to="item.path"
+          :class="[
+            'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors no-underline',
+            isActive(item.path)
+              ? 'bg-primary text-white'
+              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+          ]"
+        >
+          <span class="material-icons-round text-[20px]">{{ item.icon }}</span>
+          {{ item.label }}
+        </router-link>
+      </nav>
 
-      <el-main style="background: #f5f7fa">
+      <!-- Bottom -->
+      <div class="px-3 py-4 border-t border-gray-100 space-y-1">
+        <router-link
+          to="/setup"
+          :class="[
+            'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors no-underline',
+            isActive('/setup')
+              ? 'bg-primary text-white'
+              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+          ]"
+        >
+          <span class="material-icons-round text-[20px]">integration_instructions</span>
+          集成指南
+        </router-link>
+        <router-link
+          to="/settings"
+          :class="[
+            'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors no-underline',
+            isActive('/settings')
+              ? 'bg-primary text-white'
+              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+          ]"
+        >
+          <span class="material-icons-round text-[20px]">settings</span>
+          设置
+        </router-link>
+      </div>
+    </aside>
+
+    <!-- Main area -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <!-- Header -->
+      <header class="h-16 bg-white border-b border-gray-200 flex items-center justify-end px-6 shrink-0">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-sm font-semibold">
+            {{ auth.user?.username?.charAt(0)?.toUpperCase() || 'U' }}
+          </div>
+          <span class="text-sm font-medium text-gray-700">{{ auth.user?.username }}</span>
+          <button
+            @click="handleLogout"
+            class="ml-2 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+            title="退出"
+          >
+            <span class="material-icons-round text-[20px]">logout</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Content -->
+      <main class="flex-1 overflow-y-auto p-6">
         <router-view />
-      </el-main>
-    </el-container>
-  </el-container>
+      </main>
+    </div>
+  </div>
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 
@@ -56,13 +91,16 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 
-const activeMenu = computed(() => {
-  const path = route.path
-  if (path === '/') return '/'
-  // Match parent path for nested routes (e.g., /skills/xxx -> /skills)
-  const segments = path.split('/').filter(Boolean)
-  return '/' + (segments[0] || '')
-})
+const navItems = [
+  { path: '/', icon: 'dashboard', label: '概览' },
+  { path: '/skills', icon: 'auto_awesome', label: 'Skills' },
+  { path: '/teams', icon: 'groups', label: '团队' },
+]
+
+function isActive(path) {
+  if (path === '/') return route.path === '/'
+  return route.path.startsWith(path)
+}
 
 onMounted(() => {
   auth.fetchUser()

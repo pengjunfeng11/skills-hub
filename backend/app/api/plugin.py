@@ -7,6 +7,7 @@ from app.core.security import get_api_key_with_user
 from app.database import get_db
 from app.models.api_key import ApiKey
 from app.models.skill import Skill, SkillFile, SkillVersion
+from app.models.subscription import SkillSubscription
 from app.models.usage_log import SkillUsageLog
 from app.models.user import User
 from app.schemas.skill import (
@@ -20,11 +21,6 @@ from app.schemas.skill import (
 router = APIRouter(prefix="/api/v1/skills", tags=["plugin"])
 
 
-def _tags_match(skill_tags: list[str], allowed_tags: list[str]) -> bool:
-    """Check if a skill's tags intersect with allowed tags."""
-    return bool(set(skill_tags or []) & set(allowed_tags))
-
-
 @router.post("/resolve", response_model=ResolveResponse)
 async def resolve_skills(
     data: ResolveRequest,
@@ -33,10 +29,17 @@ async def resolve_skills(
 ):
     """Batch resolve skills by name, optionally with version pinning."""
     user, api_key = auth
-    allowed_tags = api_key.allowed_tags or []
 
-    # No tags bound → return empty
-    if not allowed_tags:
+    # Get user's subscribed skill IDs (enabled only)
+    sub_result = await db.execute(
+        select(SkillSubscription.skill_id).where(
+            SkillSubscription.user_id == user.id,
+            SkillSubscription.enabled == True,
+        )
+    )
+    subscribed_skill_ids = {row[0] for row in sub_result.all()}
+
+    if not subscribed_skill_ids:
         return ResolveResponse(skills=[])
 
     resolved = []
@@ -49,14 +52,14 @@ async def resolve_skills(
             name, ver = spec, None
 
         result = await db.execute(select(Skill).where(
-            Skill.name == name, Skill.is_published == True, Skill.visibility == "public"
+            Skill.name == name, Skill.is_published == True
         ))
         skill = result.scalar_one_or_none()
         if not skill:
             continue
 
-        # Tag filtering
-        if not _tags_match(skill.tags, allowed_tags):
+        # Subscription filtering
+        if skill.id not in subscribed_skill_ids:
             continue
 
         # Get specific version or latest
@@ -109,17 +112,35 @@ async def catalog(
     db: AsyncSession = Depends(get_db),
     auth: tuple[User, ApiKey] = Depends(get_api_key_with_user),
 ):
-    """List all published skills with their latest version."""
+    """List all published skills that the user is subscribed to."""
     user, api_key = auth
-    allowed_tags = api_key.allowed_tags or []
 
-    # No tags bound → return empty
-    if not allowed_tags:
+    # Get user's subscribed skill IDs (enabled only)
+    sub_result = await db.execute(
+        select(SkillSubscription.skill_id).where(
+            SkillSubscription.user_id == user.id,
+            SkillSubscription.enabled == True,
+        )
+    )
+    subscribed_skill_ids = {row[0] for row in sub_result.all()}
+
+    if not subscribed_skill_ids:
+        # Log usage even when empty
+        db.add(SkillUsageLog(
+            skill_name="*",
+            user_id=user.id,
+            api_key_id=api_key.id,
+            action="catalog",
+        ))
+        await db.commit()
         return CatalogResponse(skills=[])
 
     result = await db.execute(
         select(Skill)
-        .where(Skill.is_published == True, Skill.visibility == "public")
+        .where(
+            Skill.is_published == True,
+            Skill.id.in_(subscribed_skill_ids),
+        )
         .options(selectinload(Skill.versions))
         .order_by(Skill.name)
     )
@@ -127,10 +148,6 @@ async def catalog(
 
     items = []
     for skill in skills:
-        # Tag filtering
-        if not _tags_match(skill.tags, allowed_tags):
-            continue
-
         latest = skill.versions[0] if skill.versions else None
         if latest:
             items.append(
@@ -163,22 +180,24 @@ async def get_skill_raw(
 ):
     """Get raw SKILL.md content for a skill."""
     user, api_key = auth
-    allowed_tags = api_key.allowed_tags or []
-
-    # No tags bound → deny access
-    if not allowed_tags:
-        raise HTTPException(status_code=403, detail="API key has no allowed tags")
 
     result = await db.execute(select(Skill).where(
-        Skill.name == name, Skill.is_published == True, Skill.visibility == "public"
+        Skill.name == name, Skill.is_published == True
     ))
     skill = result.scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
 
-    # Tag filtering
-    if not _tags_match(skill.tags, allowed_tags):
-        raise HTTPException(status_code=403, detail="Skill not allowed by API key tags")
+    # Subscription check
+    sub_result = await db.execute(
+        select(SkillSubscription).where(
+            SkillSubscription.user_id == user.id,
+            SkillSubscription.skill_id == skill.id,
+            SkillSubscription.enabled == True,
+        )
+    )
+    if not sub_result.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="Not subscribed to this skill")
 
     if version:
         ver_result = await db.execute(

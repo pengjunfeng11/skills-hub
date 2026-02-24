@@ -1,16 +1,8 @@
 <template>
-  <el-config-provider :locale="zhCn">
-    <router-view />
-  </el-config-provider>
+  <router-view />
+  <Toast />
 </template>
 
 <script setup>
-import zhCn from 'element-plus/es/locale/lang/zh-cn'
+import Toast from './components/Toast.vue'
 </script>
-
-<style>
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-}
-</style>

@@ -68,8 +68,9 @@ async def auth_header(client: AsyncClient):
 
 
 @pytest_asyncio.fixture
-async def api_key_header(client: AsyncClient, auth_header: dict):
-    """Create an API key and return header for plugin API."""
+async def api_key_header(client: AsyncClient, auth_header: dict, sample_skill, sample_version):
+    """Create an API key and return header for plugin API.
+    Also subscribes to the sample skill (auto-subscribed on create)."""
     resp = await client.post("/api/keys", json={"name": "test-key", "allowed_tags": ["test", "demo"]}, headers=auth_header)
     key = resp.json()["key"]
     return {"Authorization": f"Bearer {key}"}
@@ -171,7 +172,9 @@ class TestAuth:
     async def test_me(self, client: AsyncClient, auth_header: dict):
         resp = await client.get("/api/auth/me", headers=auth_header)
         assert resp.status_code == 200
-        assert resp.json()["username"] == "testuser"
+        data = resp.json()
+        assert data["username"] == "testuser"
+        assert data["teams"] == []
 
     async def test_me_no_token(self, client: AsyncClient):
         resp = await client.get("/api/auth/me")
@@ -203,6 +206,9 @@ class TestSkillCRUD:
         assert data["display_name"] == "My Skill"
         assert data["tags"] == ["tag1"]
         assert data["is_published"] is False
+        # Auto-subscribed
+        assert data["is_subscribed"] is True
+        assert data["subscription_enabled"] is True
 
     async def test_create_skill_invalid_name(self, client: AsyncClient, auth_header: dict):
         resp = await client.post("/api/skills", json={
@@ -461,17 +467,17 @@ class TestApiKeys:
 # ============================================================
 
 class TestPluginAPI:
-    """Plugin API: resolve / catalog / raw"""
+    """Plugin API: resolve / catalog / raw (subscription-based)"""
 
     async def test_catalog(self, client: AsyncClient, api_key_header: dict,
-                           auth_header: dict, sample_version):
+                           auth_header: dict):
         resp = await client.get("/api/v1/skills/catalog", headers=api_key_header)
         assert resp.status_code == 200
         data = resp.json()
         assert any(s["name"] == "test-skill" for s in data["skills"])
 
     async def test_resolve_single(self, client: AsyncClient, api_key_header: dict,
-                                  auth_header: dict, sample_version):
+                                  auth_header: dict):
         resp = await client.post("/api/v1/skills/resolve", json={
             "skills": ["test-skill"],
         }, headers=api_key_header)
@@ -485,7 +491,7 @@ class TestPluginAPI:
         assert "references/api.md" in skill["files"]
 
     async def test_resolve_with_version(self, client: AsyncClient, api_key_header: dict,
-                                        auth_header: dict, sample_version):
+                                        auth_header: dict):
         resp = await client.post("/api/v1/skills/resolve", json={
             "skills": ["test-skill@1.0.0"],
         }, headers=api_key_header)
@@ -500,7 +506,7 @@ class TestPluginAPI:
         assert resp.json()["skills"] == []
 
     async def test_resolve_mixed(self, client: AsyncClient, api_key_header: dict,
-                                 auth_header: dict, sample_version):
+                                 auth_header: dict):
         resp = await client.post("/api/v1/skills/resolve", json={
             "skills": ["test-skill", "nonexistent"],
         }, headers=api_key_header)
@@ -508,7 +514,7 @@ class TestPluginAPI:
         assert len(resp.json()["skills"]) == 1
 
     async def test_raw(self, client: AsyncClient, api_key_header: dict,
-                       auth_header: dict, sample_version):
+                       auth_header: dict):
         resp = await client.get("/api/v1/skills/test-skill/raw", headers=api_key_header)
         assert resp.status_code == 200
         data = resp.json()
@@ -529,6 +535,32 @@ class TestPluginAPI:
                                 headers={"Authorization": "Bearer skh_invalid"})
         assert resp.status_code == 401
 
+    async def test_plugin_empty_without_subscription(self, client: AsyncClient, auth_header: dict):
+        """Plugin API returns empty if user has no subscriptions."""
+        # Create a skill but unsubscribe
+        await client.post("/api/skills", json={
+            "name": "unsub-skill",
+            "display_name": "Unsub Skill",
+            "tags": ["test"],
+            "visibility": "public",
+        }, headers=auth_header)
+        await client.post("/api/skills/unsub-skill/versions", json={
+            "version": "1.0.0",
+            "content": "# Unsub",
+        }, headers=auth_header)
+        # Unsubscribe
+        await client.delete("/api/skills/unsub-skill/subscribe", headers=auth_header)
+        # Create API key
+        resp = await client.post("/api/keys", json={"name": "unsub-key", "allowed_tags": ["test"]}, headers=auth_header)
+        key = resp.json()["key"]
+        key_header = {"Authorization": f"Bearer {key}"}
+        # Resolve should not return the unsubscribed skill
+        resp = await client.post("/api/v1/skills/resolve", json={
+            "skills": ["unsub-skill"],
+        }, headers=key_header)
+        assert resp.status_code == 200
+        assert resp.json()["skills"] == []
+
 
 # ============================================================
 # 7. 使用统计测试
@@ -538,7 +570,7 @@ class TestUsageLogging:
     """Plugin API 调用应写入 usage log"""
 
     async def test_resolve_creates_log(self, client: AsyncClient, api_key_header: dict,
-                                       auth_header: dict, sample_version):
+                                       auth_header: dict):
         await client.post("/api/v1/skills/resolve", json={
             "skills": ["test-skill"],
         }, headers=api_key_header)
@@ -549,7 +581,7 @@ class TestUsageLogging:
         assert resp.json()["total_calls"] >= 1
 
     async def test_catalog_creates_log(self, client: AsyncClient, api_key_header: dict,
-                                       auth_header: dict, sample_version):
+                                       auth_header: dict):
         await client.get("/api/v1/skills/catalog", headers=api_key_header)
 
         resp = await client.get("/api/stats/overview", headers=auth_header)
@@ -557,7 +589,7 @@ class TestUsageLogging:
         assert resp.json()["total_calls"] >= 1
 
     async def test_raw_creates_log(self, client: AsyncClient, api_key_header: dict,
-                                    auth_header: dict, sample_version):
+                                    auth_header: dict):
         await client.get("/api/v1/skills/test-skill/raw", headers=api_key_header)
 
         resp = await client.get("/api/stats/overview", headers=auth_header)
@@ -590,7 +622,7 @@ class TestStatsAPI:
         assert data["active_skills"] == 0
 
     async def test_overview_after_calls(self, client: AsyncClient, auth_header: dict,
-                                        api_key_header: dict, sample_version):
+                                        api_key_header: dict):
         # Make some API calls
         await client.post("/api/v1/skills/resolve", json={"skills": ["test-skill"]}, headers=api_key_header)
         await client.get("/api/v1/skills/test-skill/raw", headers=api_key_header)
@@ -610,7 +642,7 @@ class TestStatsAPI:
         assert resp.json() == []
 
     async def test_popular_after_calls(self, client: AsyncClient, auth_header: dict,
-                                       api_key_header: dict, sample_version):
+                                       api_key_header: dict):
         await client.post("/api/v1/skills/resolve", json={"skills": ["test-skill"]}, headers=api_key_header)
         await client.post("/api/v1/skills/resolve", json={"skills": ["test-skill"]}, headers=api_key_header)
         await client.get("/api/v1/skills/test-skill/raw", headers=api_key_header)
@@ -631,7 +663,7 @@ class TestStatsAPI:
         assert all(item["call_count"] == 0 for item in data)
 
     async def test_trend_after_calls(self, client: AsyncClient, auth_header: dict,
-                                     api_key_header: dict, sample_version):
+                                     api_key_header: dict):
         await client.post("/api/v1/skills/resolve", json={"skills": ["test-skill"]}, headers=api_key_header)
 
         resp = await client.get("/api/stats/trend?days=7", headers=auth_header)
@@ -667,11 +699,220 @@ class TestStatsAPI:
 
 
 # ============================================================
+# 8. Skill 权限隔离测试
+# ============================================================
+
+class TestSkillPermissionIsolation:
+    """验证不同用户之间的 Skill 可见性隔离"""
+
+    async def _create_user(self, client, username, email, password="pass123"):
+        """Helper: 注册并登录，返回 auth header."""
+        await client.post("/api/auth/register", json={
+            "username": username, "email": email, "password": password,
+        })
+        resp = await client.post("/api/auth/login", json={
+            "username": username, "password": password,
+        })
+        token = resp.json()["access_token"]
+        return {"Authorization": f"Bearer {token}"}
+
+    async def test_private_skill_invisible_to_other_user(self, client: AsyncClient):
+        """用户 A 的 private skill，用户 B 看不到"""
+        header_a = await self._create_user(client, "alice", "alice@test.com")
+        header_b = await self._create_user(client, "bob", "bob@test.com")
+
+        # Alice creates a private skill
+        resp = await client.post("/api/skills", json={
+            "name": "alice-private",
+            "display_name": "Alice Private",
+            "visibility": "private",
+        }, headers=header_a)
+        assert resp.status_code == 201
+
+        # Bob lists skills — should NOT see alice-private
+        resp = await client.get("/api/skills", headers=header_b)
+        assert resp.status_code == 200
+        names = [s["name"] for s in resp.json()["items"]]
+        assert "alice-private" not in names
+
+    async def test_private_skill_visible_to_author(self, client: AsyncClient):
+        """作者可以看到自己的 private skill"""
+        header_a = await self._create_user(client, "alice", "alice@test.com")
+
+        await client.post("/api/skills", json={
+            "name": "alice-private",
+            "display_name": "Alice Private",
+            "visibility": "private",
+        }, headers=header_a)
+
+        resp = await client.get("/api/skills", headers=header_a)
+        names = [s["name"] for s in resp.json()["items"]]
+        assert "alice-private" in names
+
+    async def test_public_skill_visible_to_all(self, client: AsyncClient):
+        """Public skill 所有人可见"""
+        header_a = await self._create_user(client, "alice", "alice@test.com")
+        header_b = await self._create_user(client, "bob", "bob@test.com")
+
+        await client.post("/api/skills", json={
+            "name": "alice-public",
+            "display_name": "Alice Public",
+            "visibility": "public",
+        }, headers=header_a)
+
+        # Bob can see it
+        resp = await client.get("/api/skills", headers=header_b)
+        names = [s["name"] for s in resp.json()["items"]]
+        assert "alice-public" in names
+
+    async def test_private_skill_detail_forbidden_to_other_user(self, client: AsyncClient):
+        """用户 B 直接访问用户 A 的 private skill 详情，返回 403"""
+        header_a = await self._create_user(client, "alice", "alice@test.com")
+        header_b = await self._create_user(client, "bob", "bob@test.com")
+
+        await client.post("/api/skills", json={
+            "name": "alice-secret",
+            "display_name": "Secret",
+            "visibility": "private",
+        }, headers=header_a)
+
+        resp = await client.get("/api/skills/alice-secret", headers=header_b)
+        assert resp.status_code == 403
+
+    async def test_other_user_cannot_edit_skill(self, client: AsyncClient):
+        """用户 B 不能编辑用户 A 的 skill（即使是 public）"""
+        header_a = await self._create_user(client, "alice", "alice@test.com")
+        header_b = await self._create_user(client, "bob", "bob@test.com")
+
+        await client.post("/api/skills", json={
+            "name": "alice-skill",
+            "display_name": "Alice Skill",
+            "visibility": "public",
+        }, headers=header_a)
+
+        resp = await client.put("/api/skills/alice-skill", json={
+            "display_name": "Hacked",
+        }, headers=header_b)
+        assert resp.status_code == 403
+
+    async def test_other_user_cannot_delete_skill(self, client: AsyncClient):
+        """用户 B 不能删除用户 A 的 skill"""
+        header_a = await self._create_user(client, "alice", "alice@test.com")
+        header_b = await self._create_user(client, "bob", "bob@test.com")
+
+        await client.post("/api/skills", json={
+            "name": "alice-skill",
+            "display_name": "Alice Skill",
+            "visibility": "public",
+        }, headers=header_a)
+
+        resp = await client.delete("/api/skills/alice-skill", headers=header_b)
+        assert resp.status_code == 403
+
+    async def test_other_user_cannot_create_version(self, client: AsyncClient):
+        """用户 B 不能给用户 A 的 skill 发布版本"""
+        header_a = await self._create_user(client, "alice", "alice@test.com")
+        header_b = await self._create_user(client, "bob", "bob@test.com")
+
+        await client.post("/api/skills", json={
+            "name": "alice-skill",
+            "display_name": "Alice Skill",
+            "visibility": "public",
+        }, headers=header_a)
+
+        resp = await client.post("/api/skills/alice-skill/versions", json={
+            "version": "1.0.0",
+            "content": "# Hacked",
+        }, headers=header_b)
+        assert resp.status_code == 403
+
+    async def test_stats_isolated_by_user(self, client: AsyncClient):
+        """用户 A 的 stats 只统计自己 API Key 的调用"""
+        header_a = await self._create_user(client, "alice", "alice@test.com")
+        header_b = await self._create_user(client, "bob", "bob@test.com")
+
+        # Alice creates skill + version + API key
+        await client.post("/api/skills", json={
+            "name": "alice-skill",
+            "display_name": "Alice Skill",
+            "tags": ["demo"],
+            "visibility": "public",
+        }, headers=header_a)
+        await client.post("/api/skills/alice-skill/versions", json={
+            "version": "1.0.0",
+            "content": "# Alice",
+        }, headers=header_a)
+        resp_key_a = await client.post("/api/keys", json={
+            "name": "alice-key",
+            "allowed_tags": ["demo"],
+        }, headers=header_a)
+        key_a = resp_key_a.json()["key"]
+        key_header_a = {"Authorization": f"Bearer {key_a}"}
+
+        # Bob subscribes to alice-skill and creates API key
+        await client.post("/api/skills/alice-skill/subscribe", headers=header_b)
+        resp_key_b = await client.post("/api/keys", json={
+            "name": "bob-key",
+            "allowed_tags": ["demo"],
+        }, headers=header_b)
+        key_b = resp_key_b.json()["key"]
+        key_header_b = {"Authorization": f"Bearer {key_b}"}
+
+        # Alice's key makes 3 calls
+        await client.post("/api/v1/skills/resolve", json={"skills": ["alice-skill"]}, headers=key_header_a)
+        await client.post("/api/v1/skills/resolve", json={"skills": ["alice-skill"]}, headers=key_header_a)
+        await client.post("/api/v1/skills/resolve", json={"skills": ["alice-skill"]}, headers=key_header_a)
+
+        # Bob's key makes 1 call
+        await client.post("/api/v1/skills/resolve", json={"skills": ["alice-skill"]}, headers=key_header_b)
+
+        # Alice sees only her 3 calls
+        resp = await client.get("/api/stats/overview", headers=header_a)
+        assert resp.status_code == 200
+        assert resp.json()["total_calls"] == 3
+
+        # Bob sees only his 1 call
+        resp = await client.get("/api/stats/overview", headers=header_b)
+        assert resp.status_code == 200
+        assert resp.json()["total_calls"] == 1
+
+    async def test_api_keys_isolated_by_user(self, client: AsyncClient):
+        """用户 A 看不到用户 B 的 API Key"""
+        header_a = await self._create_user(client, "alice", "alice@test.com")
+        header_b = await self._create_user(client, "bob", "bob@test.com")
+
+        await client.post("/api/keys", json={"name": "alice-key"}, headers=header_a)
+        await client.post("/api/keys", json={"name": "bob-key"}, headers=header_b)
+
+        # Alice only sees her key
+        resp = await client.get("/api/keys", headers=header_a)
+        names = [k["name"] for k in resp.json()]
+        assert "alice-key" in names
+        assert "bob-key" not in names
+
+        # Bob only sees his key
+        resp = await client.get("/api/keys", headers=header_b)
+        names = [k["name"] for k in resp.json()]
+        assert "bob-key" in names
+        assert "alice-key" not in names
+
+
+# ============================================================
 # 9. 团队管理测试
 # ============================================================
 
 class TestTeams:
-    """团队的创建和查询"""
+    """团队的创建、加入、退出"""
+
+    async def _create_user(self, client, username, email, password="pass123"):
+        await client.post("/api/auth/register", json={
+            "username": username, "email": email, "password": password,
+        })
+        resp = await client.post("/api/auth/login", json={
+            "username": username, "password": password,
+        })
+        token = resp.json()["access_token"]
+        return {"Authorization": f"Bearer {token}"}
 
     async def test_create_team(self, client: AsyncClient, auth_header: dict):
         resp = await client.post("/api/teams", json={
@@ -703,15 +944,227 @@ class TestTeams:
         await client.post("/api/teams", json={"name": "T2", "slug": "t2"}, headers=auth_header)
         resp = await client.get("/api/teams/t2", headers=auth_header)
         assert resp.status_code == 200
-        assert resp.json()["slug"] == "t2"
+        data = resp.json()
+        assert data["slug"] == "t2"
+        assert data["my_role"] == "admin"  # creator is admin
+        assert len(data["members"]) == 1
 
     async def test_get_team_not_found(self, client: AsyncClient, auth_header: dict):
         resp = await client.get("/api/teams/nope", headers=auth_header)
         assert resp.status_code == 404
 
+    async def test_join_team(self, client: AsyncClient):
+        header_a = await self._create_user(client, "alice", "alice@test.com")
+        header_b = await self._create_user(client, "bob", "bob@test.com")
+
+        # Alice creates team
+        await client.post("/api/teams", json={"name": "TeamA", "slug": "team-a"}, headers=header_a)
+
+        # Bob joins
+        resp = await client.post("/api/teams/team-a/join", headers=header_b)
+        assert resp.status_code == 200
+        assert resp.json()["my_role"] == "member"
+
+        # Verify Bob appears in team detail
+        resp = await client.get("/api/teams/team-a", headers=header_a)
+        assert len(resp.json()["members"]) == 2
+
+    async def test_leave_team(self, client: AsyncClient):
+        header_a = await self._create_user(client, "alice", "alice@test.com")
+        header_b = await self._create_user(client, "bob", "bob@test.com")
+
+        await client.post("/api/teams", json={"name": "TeamA", "slug": "team-a"}, headers=header_a)
+        await client.post("/api/teams/team-a/join", headers=header_b)
+
+        # Bob leaves
+        resp = await client.post("/api/teams/team-a/leave", headers=header_b)
+        assert resp.status_code == 200
+
+        # Verify Bob is gone
+        resp = await client.get("/api/teams/team-a", headers=header_a)
+        assert len(resp.json()["members"]) == 1
+
+    async def test_leave_disables_subscriptions(self, client: AsyncClient):
+        header_a = await self._create_user(client, "alice", "alice@test.com")
+        header_b = await self._create_user(client, "bob", "bob@test.com")
+
+        # Alice creates team and a team-visibility skill
+        await client.post("/api/teams", json={"name": "TeamA", "slug": "team-a"}, headers=header_a)
+        resp = await client.get("/api/teams/team-a", headers=header_a)
+        team_id = resp.json()["id"]
+
+        await client.post("/api/skills", json={
+            "name": "team-only-skill",
+            "display_name": "Team Only",
+            "visibility": "team",
+            "team_id": team_id,
+        }, headers=header_a)
+
+        # Bob joins and subscribes
+        await client.post("/api/teams/team-a/join", headers=header_b)
+        await client.post("/api/skills/team-only-skill/subscribe", headers=header_b)
+
+        # Verify subscription is active
+        resp = await client.get("/api/skills/team-only-skill", headers=header_b)
+        assert resp.json()["is_subscribed"] is True
+        assert resp.json()["subscription_enabled"] is True
+
+        # Bob leaves team → subscription should be disabled
+        await client.post("/api/teams/team-a/leave", headers=header_b)
+
+    async def test_sole_admin_cannot_leave(self, client: AsyncClient, auth_header: dict):
+        await client.post("/api/teams", json={"name": "Solo", "slug": "solo"}, headers=auth_header)
+        resp = await client.post("/api/teams/solo/leave", headers=auth_header)
+        assert resp.status_code == 400
+        assert "only admin" in resp.json()["detail"]
+
+    async def test_remove_member(self, client: AsyncClient):
+        header_a = await self._create_user(client, "alice", "alice@test.com")
+        header_b = await self._create_user(client, "bob", "bob@test.com")
+
+        await client.post("/api/teams", json={"name": "TeamA", "slug": "team-a"}, headers=header_a)
+        await client.post("/api/teams/team-a/join", headers=header_b)
+
+        # Get bob's user ID
+        resp = await client.get("/api/teams/team-a", headers=header_a)
+        members = resp.json()["members"]
+        bob_member = [m for m in members if m["username"] == "bob"][0]
+
+        # Alice (admin) removes Bob
+        resp = await client.delete(f"/api/teams/team-a/members/{bob_member['user_id']}", headers=header_a)
+        assert resp.status_code == 200
+
+        # Verify Bob is gone
+        resp = await client.get("/api/teams/team-a", headers=header_a)
+        assert len(resp.json()["members"]) == 1
+
+    async def test_my_teams(self, client: AsyncClient):
+        header_a = await self._create_user(client, "alice", "alice@test.com")
+
+        await client.post("/api/teams", json={"name": "Team1", "slug": "team-1"}, headers=header_a)
+        await client.post("/api/teams", json={"name": "Team2", "slug": "team-2"}, headers=header_a)
+
+        resp = await client.get("/api/teams/my", headers=header_a)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 2
+        slugs = {t["slug"] for t in data}
+        assert "team-1" in slugs
+        assert "team-2" in slugs
+
 
 # ============================================================
-# 10. 健康检查
+# 10. 订阅测试
+# ============================================================
+
+class TestSubscriptions:
+    """Skill 订阅机制"""
+
+    async def _create_user(self, client, username, email, password="pass123"):
+        await client.post("/api/auth/register", json={
+            "username": username, "email": email, "password": password,
+        })
+        resp = await client.post("/api/auth/login", json={
+            "username": username, "password": password,
+        })
+        token = resp.json()["access_token"]
+        return {"Authorization": f"Bearer {token}"}
+
+    async def test_auto_subscribe_on_create(self, client: AsyncClient, auth_header: dict):
+        """Creating a skill auto-subscribes the author."""
+        resp = await client.post("/api/skills", json={
+            "name": "auto-sub-skill",
+            "display_name": "Auto Sub",
+            "visibility": "public",
+        }, headers=auth_header)
+        assert resp.status_code == 201
+        assert resp.json()["is_subscribed"] is True
+        assert resp.json()["subscription_enabled"] is True
+
+    async def test_subscribe(self, client: AsyncClient):
+        header_a = await self._create_user(client, "alice", "alice@test.com")
+        header_b = await self._create_user(client, "bob", "bob@test.com")
+
+        # Alice creates a public skill
+        await client.post("/api/skills", json={
+            "name": "sub-test",
+            "display_name": "Sub Test",
+            "visibility": "public",
+        }, headers=header_a)
+
+        # Bob subscribes
+        resp = await client.post("/api/skills/sub-test/subscribe", headers=header_b)
+        assert resp.status_code == 200
+        assert resp.json()["enabled"] is True
+
+        # Verify in skill detail
+        resp = await client.get("/api/skills/sub-test", headers=header_b)
+        assert resp.json()["is_subscribed"] is True
+        assert resp.json()["subscription_enabled"] is True
+
+    async def test_unsubscribe(self, client: AsyncClient):
+        header_a = await self._create_user(client, "alice", "alice@test.com")
+        header_b = await self._create_user(client, "bob", "bob@test.com")
+
+        await client.post("/api/skills", json={
+            "name": "unsub-test",
+            "display_name": "Unsub Test",
+            "visibility": "public",
+        }, headers=header_a)
+
+        # Bob subscribes then unsubscribes
+        await client.post("/api/skills/unsub-test/subscribe", headers=header_b)
+        resp = await client.delete("/api/skills/unsub-test/subscribe", headers=header_b)
+        assert resp.status_code == 200
+        assert resp.json()["enabled"] is False
+
+        # Verify in skill detail
+        resp = await client.get("/api/skills/unsub-test", headers=header_b)
+        assert resp.json()["is_subscribed"] is True  # record exists
+        assert resp.json()["subscription_enabled"] is False  # but disabled
+
+    async def test_plugin_only_returns_subscribed(self, client: AsyncClient, auth_header: dict):
+        """Plugin API only returns skills user is subscribed to."""
+        # Create two skills (auto-subscribed)
+        await client.post("/api/skills", json={
+            "name": "skill-yes",
+            "display_name": "Skill Yes",
+            "tags": ["test"],
+            "visibility": "public",
+        }, headers=auth_header)
+        await client.post("/api/skills/skill-yes/versions", json={
+            "version": "1.0.0",
+            "content": "# Yes",
+        }, headers=auth_header)
+
+        await client.post("/api/skills", json={
+            "name": "skill-no",
+            "display_name": "Skill No",
+            "tags": ["test"],
+            "visibility": "public",
+        }, headers=auth_header)
+        await client.post("/api/skills/skill-no/versions", json={
+            "version": "1.0.0",
+            "content": "# No",
+        }, headers=auth_header)
+
+        # Unsubscribe from skill-no
+        await client.delete("/api/skills/skill-no/subscribe", headers=auth_header)
+
+        # Create API key
+        resp = await client.post("/api/keys", json={"name": "sub-test-key", "allowed_tags": ["test"]}, headers=auth_header)
+        key = resp.json()["key"]
+        key_header = {"Authorization": f"Bearer {key}"}
+
+        # Catalog should only return skill-yes
+        resp = await client.get("/api/v1/skills/catalog", headers=key_header)
+        names = [s["name"] for s in resp.json()["skills"]]
+        assert "skill-yes" in names
+        assert "skill-no" not in names
+
+
+# ============================================================
+# 11. 健康检查
 # ============================================================
 
 class TestHealth:

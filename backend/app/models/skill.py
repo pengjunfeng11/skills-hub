@@ -27,6 +27,7 @@ class Skill(Base):
     team = relationship("Team", back_populates="skills")
     category = relationship("Category")
     versions = relationship("SkillVersion", back_populates="skill", cascade="all, delete-orphan", order_by="SkillVersion.created_at.desc()")
+    subscriptions = relationship("SkillSubscription", back_populates="skill", cascade="all, delete-orphan")
 
 
 class SkillVersion(Base):
