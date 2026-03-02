@@ -79,6 +79,11 @@
 
         <!-- Hook -->
         <div v-show="configTab === 'Hook 脚本'">
+          <p class="text-sm text-gray-600 mb-2">
+            可选：在项目根目录创建
+            <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">.skills-hub.json</code>
+            覆盖 URL / API Key / 默认 skills（按项目隔离）。
+          </p>
           <p class="text-sm text-gray-600 mb-2">创建 <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono">~/.claude/hooks/fetch-skills.sh</code>：</p>
           <div class="relative bg-gray-900 text-gray-100 rounded-xl px-4 py-3 font-mono text-xs leading-relaxed overflow-x-auto mb-4">
             <button @click="copy(hookScript)" class="absolute top-2 right-2 text-gray-400 hover:text-white cursor-pointer bg-transparent border-none">
@@ -160,27 +165,52 @@ const backendUrl = computed(() => {
 
 const hookScript = computed(() =>
 `#!/usr/bin/env bash
-SKILLS_HUB_URL="\${SKILLS_HUB_URL:-${backendUrl.value}}"
-SKILLS_HUB_API_KEY="\${SKILLS_HUB_API_KEY:-}"
-
-if [[ -z "$SKILLS_HUB_API_KEY" ]]; then exit 0; fi
-
 INPUT=$(cat)
 USER_MSG=$(echo "$INPUT" | jq -r '.messages[-1].content // empty' 2>/dev/null)
-if [[ -z "$USER_MSG" ]]; then exit 0; fi
+CWD=$(echo "$INPUT" | jq -r '.cwd // .workspace.cwd // empty' 2>/dev/null)
+CWD="\${CWD:-$(pwd)}"
 
-RESPONSE=$(curl -s --max-time 5 \\
-  -H "Authorization: Bearer $SKILLS_HUB_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  "\${SKILLS_HUB_URL}/plugin/match" \\
-  -d "{\\"query\\": \\"$USER_MSG\\"}" 2>/dev/null)
+CFG_FILE="$CWD/.skills-hub.json"
+CFG_URL=""
+CFG_KEY=""
+CFG_SKILLS='[]'
+if [[ -f "$CFG_FILE" ]]; then
+  CFG_URL=$(jq -r '.url // empty' "$CFG_FILE")
+  CFG_KEY=$(jq -r '.api_key // empty' "$CFG_FILE")
+  CFG_SKILLS=$(jq -rc '.skills // []' "$CFG_FILE")
+fi
 
-SKILL=$(echo "$RESPONSE" | jq -r '.skill // empty' 2>/dev/null)
-if [[ -n "$SKILL" ]]; then
-  jq -n --arg s "$SKILL" '{"instructions": $s}'
-else
+SKILLS_HUB_URL="\${CFG_URL:-\${SKILLS_HUB_URL:-${backendUrl.value}}}"
+SKILLS_HUB_API_KEY="\${CFG_KEY:-\${SKILLS_HUB_API_KEY:-}}"
+SKILLS_HUB_URL="\${SKILLS_HUB_URL%/}"
+if [[ -z "$SKILLS_HUB_API_KEY" ]]; then exit 0; fi
+
+if [[ -z "$USER_MSG" ]]; then
+  # 空消息时仅探活目录
+  curl -s --max-time 5 -H "Authorization: Bearer $SKILLS_HUB_API_KEY" "\\${SKILLS_HUB_URL}/api/v1/skills/catalog" >/dev/null
   echo '{}'
-fi`)
+  exit 0
+fi
+
+REQ_SKILLS="$CFG_SKILLS"
+MENTIONED=$(printf '%s' "$USER_MSG" | grep -Eo '@[a-z0-9][a-z0-9-]*' | sed 's/^@//' | jq -R . | jq -sc . 2>/dev/null || echo '[]')
+if [[ "$MENTIONED" != "[]" ]]; then
+  REQ_SKILLS="$MENTIONED"
+fi
+
+if [[ "$REQ_SKILLS" == "[]" ]]; then
+  CATALOG=$(curl -s --max-time 5 -H "Authorization: Bearer $SKILLS_HUB_API_KEY" "\\${SKILLS_HUB_URL}/api/v1/skills/catalog")
+  NAMES=$(echo "$CATALOG" | jq -r '.skills|map(.name)|join(\", \")' 2>/dev/null)
+  [[ -n "$NAMES" ]] && jq -n --arg s "[Skills Hub] 可用 skills: $NAMES。用 @skill-name 显式加载。" '{"instructions":$s}' || echo '{}'
+  exit 0
+fi
+
+RES=$(jq -nc --argjson s "$REQ_SKILLS" '{skills:$s}' | \\
+  curl -s --max-time 8 -H "Authorization: Bearer $SKILLS_HUB_API_KEY" -H "Content-Type: application/json" "\\${SKILLS_HUB_URL}/api/v1/skills/resolve" -d @-)
+
+OUT=$(echo "$RES" | jq -r '.skills|map(\"## Skill: \\(.name)@\\(.version)\\\\n\\(.content)\")|join(\"\\\\n\\\\n---\\\\n\\\\n\")' 2>/dev/null)
+[[ -n "$OUT" ]] && jq -n --arg s "$OUT" '{"instructions":$s}' || echo '{}'
+`)
 
 const hookConfig = computed(() =>
   JSON.stringify({
@@ -212,7 +242,7 @@ export SKILLS_HUB_API_KEY="<YOUR_API_KEY>"`)
 
 const verifyCommand = computed(() =>
 `curl -s -H "Authorization: Bearer \$SKILLS_HUB_API_KEY" \\
-  "${backendUrl.value}/plugin/skills"`)
+  "${backendUrl.value}/api/v1/skills/catalog"`)
 
 async function copy(text) {
   try {

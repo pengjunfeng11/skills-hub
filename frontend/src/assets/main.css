@@ -37,6 +37,47 @@ body {
   background: var(--color-gray-50);
 }
 
+html.dark body {
+  color: #e5e7eb;
+  background: #020617;
+}
+
+/* Ensure selected text remains readable across inputs and content */
+::selection {
+  background: #bfdbfe;
+  color: #111827;
+}
+
+::-moz-selection {
+  background: #bfdbfe;
+  color: #111827;
+}
+
+input,
+textarea {
+  color: #111827;
+  caret-color: #111827;
+}
+
+html.dark ::selection {
+  background: #1e3a8a;
+  color: #f8fafc;
+}
+
+html.dark ::-moz-selection {
+  background: #1e3a8a;
+  color: #f8fafc;
+}
+
+html.dark input,
+html.dark textarea,
+html.dark select {
+  color: #e5e7eb;
+  caret-color: #e5e7eb;
+  background-color: #0f172a;
+  border-color: #334155;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -60,4 +101,69 @@ a {
 }
 a:hover {
   text-decoration: underline;
+}
+
+/* Dark mode global utility overrides for existing Tailwind classes */
+html.dark .bg-white {
+  background-color: #0f172a !important;
+}
+
+html.dark .bg-gray-50 {
+  background-color: #020617 !important;
+}
+
+html.dark .bg-gray-100,
+html.dark .hover\:bg-gray-100:hover {
+  background-color: #1e293b !important;
+}
+
+html.dark .bg-gray-50\/50,
+html.dark .hover\:bg-gray-50\/50:hover {
+  background-color: rgba(30, 41, 59, 0.5) !important;
+}
+
+html.dark .text-gray-900 {
+  color: #f8fafc !important;
+}
+
+html.dark .text-gray-800 {
+  color: #e2e8f0 !important;
+}
+
+html.dark .text-gray-700 {
+  color: #cbd5e1 !important;
+}
+
+html.dark .text-gray-600 {
+  color: #94a3b8 !important;
+}
+
+html.dark .text-gray-500,
+html.dark .text-gray-400 {
+  color: #94a3b8 !important;
+}
+
+html.dark .border-gray-300,
+html.dark .border-gray-200,
+html.dark .border-gray-100,
+html.dark .border-gray-50 {
+  border-color: #334155 !important;
+}
+
+html.dark code {
+  color: #c7d2fe;
+  background-color: #1e293b;
+  border-color: #334155;
+}
+
+html.dark a {
+  color: #60a5fa;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+html.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }

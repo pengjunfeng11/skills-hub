@@ -23,6 +23,7 @@ class SkillCreate(BaseModel):
     tags: list[str] = []
     visibility: VisibilityEnum = VisibilityEnum.public
     team_id: uuid.UUID | None = None
+    team_ids: list[uuid.UUID] = []
 
 
 class SkillUpdate(BaseModel):
@@ -31,6 +32,8 @@ class SkillUpdate(BaseModel):
     category_id: uuid.UUID | None = None
     tags: list[str] | None = None
     visibility: VisibilityEnum | None = None
+    team_id: uuid.UUID | None = None
+    team_ids: list[uuid.UUID] | None = None
 
 
 class SkillResponse(BaseModel):
@@ -43,6 +46,7 @@ class SkillResponse(BaseModel):
     is_published: bool
     author_id: uuid.UUID
     team_id: uuid.UUID | None = None
+    team_ids: list[uuid.UUID] = []
     category_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
@@ -75,6 +79,20 @@ class VersionResponse(BaseModel):
     created_at: datetime
     published_at: datetime | None = None
     files: dict[str, str] = {}
+
+
+class SkillEditLogResponse(BaseModel):
+    id: uuid.UUID
+    skill_id: uuid.UUID
+    actor_user_id: uuid.UUID | None = None
+    actor_username: str | None = None
+    action: str
+    target_type: str
+    target_path: str | None = None
+    from_version: str | None = None
+    to_version: str | None = None
+    detail: str | None = None
+    created_at: datetime
 
 
 class ApiKeyCreate(BaseModel):

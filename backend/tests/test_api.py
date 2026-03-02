@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import uuid
 
@@ -217,6 +218,29 @@ class TestSkillCRUD:
         }, headers=auth_header)
         assert resp.status_code == 400
 
+    async def test_create_team_visibility_requires_team_ids(self, client: AsyncClient, auth_header: dict):
+        resp = await client.post("/api/skills", json={
+            "name": "team-skill-no-team",
+            "display_name": "Team Skill No Team",
+            "visibility": "team",
+        }, headers=auth_header)
+        assert resp.status_code == 400
+
+    async def test_create_team_visibility_with_multiple_team_ids(self, client: AsyncClient, auth_header: dict):
+        t1 = await client.post("/api/teams", json={"name": "T1", "slug": "t1"}, headers=auth_header)
+        t2 = await client.post("/api/teams", json={"name": "T2", "slug": "t2"}, headers=auth_header)
+        team_ids = [t1.json()["id"], t2.json()["id"]]
+
+        resp = await client.post("/api/skills", json={
+            "name": "team-skill-multi",
+            "display_name": "Team Skill Multi",
+            "visibility": "team",
+            "team_ids": team_ids,
+        }, headers=auth_header)
+        assert resp.status_code == 201
+        data = resp.json()
+        assert sorted(data["team_ids"]) == sorted(team_ids)
+
     async def test_create_skill_duplicate_name(self, client: AsyncClient, auth_header: dict):
         await client.post("/api/skills", json={
             "name": "dup-skill", "display_name": "A",
@@ -232,6 +256,68 @@ class TestSkillCRUD:
         data = resp.json()
         assert data["total"] >= 1
         assert any(s["name"] == "test-skill" for s in data["items"])
+
+    async def test_team_scope_isolated_build_things_scenario(self, client: AsyncClient, auth_header: dict):
+        # Scenario:
+        # - skill "build-things" belongs to team-u1771833022
+        # - user in a-team must NOT see it
+        target_team_resp = await client.post("/api/teams", json={
+            "name": "Team u1771833022",
+            "slug": "team-u1771833022",
+            "description": "Target scope team",
+        }, headers=auth_header)
+        assert target_team_resp.status_code == 201
+        target_team_id = target_team_resp.json()["id"]
+
+        a_team_resp = await client.post("/api/teams", json={
+            "name": "A-team",
+            "slug": "a-team",
+            "description": "Another team",
+        }, headers=auth_header)
+        assert a_team_resp.status_code == 201
+
+        create_skill_resp = await client.post("/api/skills", json={
+            "name": "build-things",
+            "display_name": "Build Things",
+            "description": "Team isolated skill",
+            "visibility": "team",
+            "team_ids": [target_team_id],
+        }, headers=auth_header)
+        assert create_skill_resp.status_code == 201
+
+        # Create asd and join only a-team.
+        register_resp = await client.post("/api/auth/register", json={
+            "username": "asd",
+            "email": "asd@example.com",
+            "password": "pass12345",
+        })
+        assert register_resp.status_code == 201
+
+        login_resp = await client.post("/api/auth/login", json={
+            "username": "asd",
+            "password": "pass12345",
+        })
+        assert login_resp.status_code == 200
+        asd_auth = {"Authorization": f"Bearer {login_resp.json()['access_token']}"}
+
+        join_a_team_resp = await client.post("/api/teams/a-team/join", headers=asd_auth)
+        assert join_a_team_resp.status_code == 200
+
+        # asd is in a-team but not team-u1771833022: should NOT see build-things.
+        list_resp = await client.get("/api/skills?page=1&size=50", headers=asd_auth)
+        assert list_resp.status_code == 200
+        assert not any(item["name"] == "build-things" for item in list_resp.json()["items"])
+
+        detail_resp = await client.get("/api/skills/build-things", headers=asd_auth)
+        assert detail_resp.status_code == 403
+
+        # After joining the correct team, asd should be able to see it.
+        join_target_team_resp = await client.post("/api/teams/team-u1771833022/join", headers=asd_auth)
+        assert join_target_team_resp.status_code == 200
+
+        list_after_join_resp = await client.get("/api/skills?page=1&size=50", headers=asd_auth)
+        assert list_after_join_resp.status_code == 200
+        assert any(item["name"] == "build-things" for item in list_after_join_resp.json()["items"])
 
     async def test_list_skills_search(self, client: AsyncClient, auth_header: dict, sample_skill):
         resp = await client.get("/api/skills?q=test", headers=auth_header)
@@ -261,6 +347,50 @@ class TestSkillCRUD:
         assert resp.status_code == 200
         assert resp.json()["display_name"] == "Updated Name"
         assert resp.json()["tags"] == ["updated"]
+
+    async def test_update_visibility_to_team_requires_team_ids(self, client: AsyncClient, auth_header: dict, sample_skill):
+        resp = await client.put("/api/skills/test-skill", json={
+            "visibility": "team",
+            "team_ids": [],
+        }, headers=auth_header)
+        assert resp.status_code == 400
+
+    async def test_update_visibility_team_to_private_clears_team_ids(self, client: AsyncClient, auth_header: dict):
+        team_resp = await client.post("/api/teams", json={"name": "Scope Team", "slug": "scope-team"}, headers=auth_header)
+        team_id = team_resp.json()["id"]
+
+        create_resp = await client.post("/api/skills", json={
+            "name": "team-to-private-skill",
+            "display_name": "Team To Private",
+            "visibility": "team",
+            "team_ids": [team_id],
+        }, headers=auth_header)
+        assert create_resp.status_code == 201
+        assert create_resp.json()["team_ids"] == [team_id]
+
+        update_resp = await client.put("/api/skills/team-to-private-skill", json={
+            "visibility": "private",
+        }, headers=auth_header)
+        assert update_resp.status_code == 200
+        assert update_resp.json()["visibility"] == "private"
+        assert update_resp.json()["team_ids"] == []
+        assert update_resp.json()["team_id"] is None
+
+    async def test_create_private_ignores_team_ids(self, client: AsyncClient, auth_header: dict):
+        team_resp = await client.post("/api/teams", json={"name": "Private Team", "slug": "private-team"}, headers=auth_header)
+        team_id = team_resp.json()["id"]
+
+        resp = await client.post("/api/skills", json={
+            "name": "private-skill-with-team",
+            "display_name": "Private Skill With Team",
+            "visibility": "private",
+            "team_ids": [team_id],
+        }, headers=auth_header)
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["visibility"] == "private"
+        assert data["team_ids"] == []
+        assert data["team_id"] is None
 
     async def test_delete_skill(self, client: AsyncClient, auth_header: dict, sample_skill):
         resp = await client.delete("/api/skills/test-skill", headers=auth_header)
@@ -364,7 +494,71 @@ class TestVersionManagement:
 
 
 # ============================================================
-# 4. SKILL.md 解析测试
+# 4.1 编辑记录测试
+# ============================================================
+
+class TestSkillEditLogs:
+    """Skill 编辑记录应包含操作者、时间和文件级修改"""
+
+    async def test_logs_created_for_skill_update(self, client: AsyncClient, auth_header: dict, sample_skill):
+        # create_skill 会写 skill_created；更新后会写 skill_updated
+        resp = await client.put("/api/skills/test-skill", json={
+            "display_name": "Renamed Skill",
+            "description": "Updated desc",
+        }, headers=auth_header)
+        assert resp.status_code == 200
+
+        logs_resp = await client.get("/api/skills/test-skill/edit-logs", headers=auth_header)
+        assert logs_resp.status_code == 200
+        logs = logs_resp.json()
+        actions = [x["action"] for x in logs]
+        assert "skill_created" in actions
+        assert "skill_updated" in actions
+        assert any(x["actor_username"] == "testuser" for x in logs if x["action"] == "skill_updated")
+
+    async def test_logs_include_file_level_changes(self, client: AsyncClient, auth_header: dict, sample_skill):
+        # v1: add two files
+        r1 = await client.post("/api/skills/test-skill/versions", json={
+            "version": "1.0.0",
+            "content": "# v1",
+            "files": {
+                "references/api.md": "v1-api",
+                "examples/basic.md": "v1-basic",
+            },
+        }, headers=auth_header)
+        assert r1.status_code == 201
+
+        # v1.1: modify one, delete one, add one
+        r2 = await client.post("/api/skills/test-skill/versions", json={
+            "version": "1.1.0",
+            "content": "# v1.1",
+            "files": {
+                "references/api.md": "v1.1-api",   # modified
+                "examples/advanced.md": "v1.1-adv", # added
+            },
+        }, headers=auth_header)
+        assert r2.status_code == 201
+
+        logs_resp = await client.get("/api/skills/test-skill/edit-logs", headers=auth_header)
+        assert logs_resp.status_code == 200
+        logs = logs_resp.json()
+
+        assert any(x["action"] == "file_modified" and x["target_path"] == "references/api.md" for x in logs)
+        assert any(x["action"] == "file_added" and x["target_path"] == "examples/advanced.md" for x in logs)
+        assert any(x["action"] == "file_deleted" and x["target_path"] == "examples/basic.md" for x in logs)
+        assert any(x["action"] == "version_published" and x["to_version"] == "1.1.0" for x in logs)
+        version_log = next(x for x in logs if x["action"] == "version_published" and x["to_version"] == "1.1.0")
+        detail = json.loads(version_log["detail"])
+        assert detail["summary"]["files_added"] == 1
+        assert detail["summary"]["files_modified"] == 1
+        assert detail["summary"]["files_deleted"] == 1
+        assert detail["summary"]["added_paths"] == ["examples/advanced.md"]
+        assert detail["summary"]["modified_paths"] == ["references/api.md"]
+        assert detail["summary"]["deleted_paths"] == ["examples/basic.md"]
+
+
+# ============================================================
+# 5. SKILL.md 解析测试
 # ============================================================
 
 class TestSkillMdParsing:
@@ -560,6 +754,73 @@ class TestPluginAPI:
         }, headers=key_header)
         assert resp.status_code == 200
         assert resp.json()["skills"] == []
+
+    async def test_plugin_team_skill_hidden_for_non_member(self, client: AsyncClient, auth_header: dict):
+        """Team-visibility skills must be hidden for users outside the team."""
+        # Owner creates a team and a team-only skill.
+        team_resp = await client.post("/api/teams", json={
+            "name": "Core Team",
+            "slug": "core-team",
+            "description": "Core team",
+        }, headers=auth_header)
+        assert team_resp.status_code == 201
+        team_id = team_resp.json()["id"]
+
+        create_skill_resp = await client.post("/api/skills", json={
+            "name": "team-only-skill",
+            "display_name": "Team Only Skill",
+            "description": "Only team members can access",
+            "tags": ["team"],
+            "visibility": "team",
+            "team_ids": [team_id],
+        }, headers=auth_header)
+        assert create_skill_resp.status_code == 201
+
+        publish_resp = await client.post("/api/skills/team-only-skill/versions", json={
+            "version": "1.0.0",
+            "content": "# Team Skill",
+        }, headers=auth_header)
+        assert publish_resp.status_code == 201
+
+        # Owner can resolve it via plugin API.
+        owner_key_resp = await client.post("/api/keys", json={"name": "owner-key"}, headers=auth_header)
+        owner_key = owner_key_resp.json()["key"]
+        owner_key_header = {"Authorization": f"Bearer {owner_key}"}
+        owner_resolve = await client.post("/api/v1/skills/resolve", json={
+            "skills": ["team-only-skill"],
+        }, headers=owner_key_header)
+        assert owner_resolve.status_code == 200
+        assert len(owner_resolve.json()["skills"]) == 1
+
+        # Outsider user (not in team) cannot resolve/catalog/raw this team-only skill.
+        await client.post("/api/auth/register", json={
+            "username": "outsider",
+            "email": "outsider@example.com",
+            "password": "pass12345",
+        })
+        outsider_login = await client.post("/api/auth/login", json={
+            "username": "outsider",
+            "password": "pass12345",
+        })
+        outsider_token = outsider_login.json()["access_token"]
+        outsider_auth = {"Authorization": f"Bearer {outsider_token}"}
+
+        outsider_key_resp = await client.post("/api/keys", json={"name": "outsider-key"}, headers=outsider_auth)
+        outsider_key = outsider_key_resp.json()["key"]
+        outsider_key_header = {"Authorization": f"Bearer {outsider_key}"}
+
+        outsider_resolve = await client.post("/api/v1/skills/resolve", json={
+            "skills": ["team-only-skill"],
+        }, headers=outsider_key_header)
+        assert outsider_resolve.status_code == 200
+        assert outsider_resolve.json()["skills"] == []
+
+        outsider_catalog = await client.get("/api/v1/skills/catalog", headers=outsider_key_header)
+        assert outsider_catalog.status_code == 200
+        assert not any(x["name"] == "team-only-skill" for x in outsider_catalog.json()["skills"])
+
+        outsider_raw = await client.get("/api/v1/skills/team-only-skill/raw", headers=outsider_key_header)
+        assert outsider_raw.status_code in (403, 404)
 
 
 # ============================================================
@@ -997,7 +1258,7 @@ class TestTeams:
             "name": "team-only-skill",
             "display_name": "Team Only",
             "visibility": "team",
-            "team_id": team_id,
+            "team_ids": [team_id],
         }, headers=header_a)
 
         # Bob joins and subscribes

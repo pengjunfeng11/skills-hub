@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models.team import Team
 from app.models.team_member import TeamMember
 from app.models.subscription import SkillSubscription
-from app.models.skill import Skill
+from app.models.skill import Skill, SkillVisibilityTeam
 from app.models.user import User
 from app.schemas.skill import TeamCreate, TeamResponse, TeamDetailResponse, TeamMemberResponse
 
@@ -174,7 +174,9 @@ async def leave_team(
 
     # Disable subscriptions for team-visibility skills of this team
     team_skill_ids_result = await db.execute(
-        select(Skill.id).where(Skill.team_id == team.id, Skill.visibility == "team")
+        select(SkillVisibilityTeam.skill_id)
+        .join(Skill, Skill.id == SkillVisibilityTeam.skill_id)
+        .where(SkillVisibilityTeam.team_id == team.id, Skill.visibility == "team")
     )
     team_skill_ids = [row[0] for row in team_skill_ids_result.all()]
     if team_skill_ids:
@@ -225,7 +227,9 @@ async def remove_member(
 
     # Disable subscriptions for team-visibility skills
     team_skill_ids_result = await db.execute(
-        select(Skill.id).where(Skill.team_id == team.id, Skill.visibility == "team")
+        select(SkillVisibilityTeam.skill_id)
+        .join(Skill, Skill.id == SkillVisibilityTeam.skill_id)
+        .where(SkillVisibilityTeam.team_id == team.id, Skill.visibility == "team")
     )
     team_skill_ids = [row[0] for row in team_skill_ids_result.all()]
     if team_skill_ids:

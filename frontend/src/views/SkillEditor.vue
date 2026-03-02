@@ -105,6 +105,27 @@
                 </div>
               </div>
 
+              <div v-if="form.visibility === 'team'">
+                <label class="block text-sm font-medium text-gray-500 mb-2">可见团队</label>
+                <div v-if="myTeams.length" class="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  <label
+                    v-for="team in myTeams"
+                    :key="team.id"
+                    class="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer"
+                  >
+                    <input
+                      v-model="form.team_ids"
+                      :value="team.id"
+                      type="checkbox"
+                      class="accent-[#1A73E8]"
+                    />
+                    <span class="text-sm text-gray-700">{{ team.name }}</span>
+                    <span class="text-xs text-gray-400 font-mono">{{ team.slug }}</span>
+                  </label>
+                </div>
+                <p v-else class="text-xs text-amber-600">你还没有加入任何团队，无法设置 Team 可见。</p>
+              </div>
+
               <!-- Tags -->
               <div>
                 <label class="block text-sm font-medium text-gray-500 mb-1.5">标签</label>
@@ -216,12 +237,12 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useToast } from '../composables/useToast'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
-import { createSkill, createVersion, getSkill, updateSkill, parseSkillMd } from '../api'
+import { createSkill, createVersion, getSkill, updateSkill, parseSkillMd, getMyTeams } from '../api'
 import FolderUpload from '../components/FolderUpload.vue'
 import TagInput from '../components/TagInput.vue'
 
@@ -234,6 +255,7 @@ const loading = ref(false)
 const importedFiles = ref({})
 const editorTab = ref('edit')
 const latestVersion = ref('')
+const myTeams = ref([])
 
 const visibilityOptions = [
   { value: 'public', label: 'Public', desc: '所有人可见' },
@@ -254,6 +276,7 @@ const form = reactive({
   display_name: '',
   description: '',
   visibility: 'public',
+  team_ids: [],
   tags: [],
 })
 
@@ -263,6 +286,12 @@ const initialVersion = reactive({
 })
 
 onMounted(async () => {
+  try {
+    const teamsRes = await getMyTeams()
+    myTeams.value = teamsRes.data || []
+  } catch {
+    myTeams.value = []
+  }
   if (isEdit.value) {
     loading.value = true
     try {
@@ -272,6 +301,9 @@ onMounted(async () => {
         display_name: res.data.display_name,
         description: res.data.description || '',
         visibility: res.data.visibility,
+        team_ids: (res.data.team_ids && res.data.team_ids.length)
+          ? res.data.team_ids
+          : (res.data.team_id ? [res.data.team_id] : []),
         tags: res.data.tags || [],
       })
       latestVersion.value = res.data.latest_version || ''
@@ -280,6 +312,12 @@ onMounted(async () => {
     } finally {
       loading.value = false
     }
+  }
+})
+
+watch(() => form.visibility, (nextVisibility) => {
+  if (nextVisibility !== 'team' && form.team_ids.length > 0) {
+    form.team_ids = []
   }
 })
 
@@ -308,13 +346,19 @@ async function handleSave() {
     toast.warning('请填写显示名称')
     return
   }
+  if (form.visibility === 'team' && (!form.team_ids || form.team_ids.length === 0)) {
+    toast.warning('请选择至少一个可见团队')
+    return
+  }
   saving.value = true
   try {
+    const selectedTeamIds = form.visibility === 'team' ? form.team_ids : []
     if (isEdit.value) {
       await updateSkill(form.name, {
         display_name: form.display_name,
         description: form.description,
         visibility: form.visibility,
+        team_ids: selectedTeamIds,
         tags: form.tags,
       })
       toast.success('保存成功')
@@ -325,7 +369,11 @@ async function handleSave() {
         saving.value = false
         return
       }
-      await createSkill(form)
+      await createSkill({
+        ...form,
+        team_ids: selectedTeamIds,
+        team_id: selectedTeamIds[0] || null, // backward compatibility for older clients
+      })
       if (initialVersion.version && initialVersion.content) {
         const versionData = {
           version: initialVersion.version,

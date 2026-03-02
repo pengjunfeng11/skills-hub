@@ -19,7 +19,7 @@
           <input
             v-model="search"
             placeholder="搜索 Skills..."
-            class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+            class="search-input w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl text-sm text-gray-900 bg-white caret-gray-900 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all selection:bg-blue-200 selection:text-gray-900"
             @keyup.enter="resetAndLoad"
           />
         </div>
@@ -330,3 +330,15 @@ onMounted(() => {
   loadSkills()
 })
 </script>
+
+<style scoped>
+.search-input::selection {
+  background: #bfdbfe;
+  color: #111827;
+}
+
+.search-input::-moz-selection {
+  background: #bfdbfe;
+  color: #111827;
+}
+</style>

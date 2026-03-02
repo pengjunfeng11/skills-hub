@@ -95,7 +95,9 @@ async def get_api_key_user(
     if "read" not in (api_key.scopes or []):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="API key lacks 'read' scope")
 
-    result = await db.execute(select(User).where(User.id == api_key.user_id))
+    result = await db.execute(
+        select(User).where(User.id == api_key.user_id).options(selectinload(User.team_memberships))
+    )
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
@@ -125,7 +127,9 @@ async def get_api_key_with_user(
     if "read" not in (api_key.scopes or []):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="API key lacks 'read' scope")
 
-    result = await db.execute(select(User).where(User.id == api_key.user_id))
+    result = await db.execute(
+        select(User).where(User.id == api_key.user_id).options(selectinload(User.team_memberships))
+    )
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")

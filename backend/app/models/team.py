@@ -18,3 +18,4 @@ class Team(Base):
 
     team_members = relationship("TeamMember", back_populates="team", cascade="all, delete-orphan")
     skills = relationship("Skill", back_populates="team")
+    visible_skills = relationship("SkillVisibilityTeam", back_populates="team", cascade="all, delete-orphan")

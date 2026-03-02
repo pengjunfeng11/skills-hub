@@ -28,6 +28,16 @@ class Skill(Base):
     category = relationship("Category")
     versions = relationship("SkillVersion", back_populates="skill", cascade="all, delete-orphan", order_by="SkillVersion.created_at.desc()")
     subscriptions = relationship("SkillSubscription", back_populates="skill", cascade="all, delete-orphan")
+    visibility_teams = relationship("SkillVisibilityTeam", back_populates="skill", cascade="all, delete-orphan")
+
+
+class SkillVisibilityTeam(Base):
+    __tablename__ = "skill_visibility_teams"
+    skill_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("skills.id", ondelete="CASCADE"), primary_key=True)
+    team_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("teams.id", ondelete="CASCADE"), primary_key=True)
+
+    skill = relationship("Skill", back_populates="visibility_teams")
+    team = relationship("Team", back_populates="visible_skills")
 
 
 class SkillVersion(Base):

@@ -42,6 +42,7 @@ export const updateSkill = (name, data) => api.put(`/skills/${name}`, data)
 export const deleteSkill = (name) => api.delete(`/skills/${name}`)
 export const subscribeSkill = (name) => api.post(`/skills/${name}/subscribe`)
 export const unsubscribeSkill = (name) => api.delete(`/skills/${name}/subscribe`)
+export const getSkillEditLogs = (name, params) => api.get(`/skills/${name}/edit-logs`, { params })
 
 // Versions
 export const getVersions = (name) => api.get(`/skills/${name}/versions`)

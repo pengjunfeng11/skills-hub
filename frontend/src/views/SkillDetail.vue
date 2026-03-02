@@ -53,13 +53,23 @@
           <div class="bg-white rounded-2xl border border-gray-200 shadow-card">
             <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <h3 class="text-base font-semibold text-gray-900">内容预览</h3>
-              <select
-                v-model="selectedVersion"
-                @change="loadVersion"
-                class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white cursor-pointer focus:border-primary outline-none"
-              >
-                <option v-for="v in versions" :key="v.version" :value="v.version">{{ v.version }}</option>
-              </select>
+              <div class="flex items-center gap-2">
+                <button
+                  v-if="activeTab !== 'skill-md' && currentFiles[activeTab]"
+                  @click="downloadAttachment(activeTab, currentFiles[activeTab])"
+                  class="inline-flex items-center gap-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 cursor-pointer"
+                >
+                  <span class="material-icons-round text-[16px]">download</span>
+                  下载当前文件
+                </button>
+                <select
+                  v-model="selectedVersion"
+                  @change="loadVersion"
+                  class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white cursor-pointer focus:border-primary outline-none"
+                >
+                  <option v-for="v in versions" :key="v.version" :value="v.version">{{ v.version }}</option>
+                </select>
+              </div>
             </div>
 
             <!-- Tabs -->
@@ -107,7 +117,14 @@
               >
                 <span class="material-icons-round text-gray-400 text-[18px] mr-3">description</span>
                 <span class="text-sm font-medium text-primary">{{ path }}</span>
-                <span class="ml-auto text-xs text-gray-400">{{ content.length }} 字符</span>
+                <span class="ml-auto text-xs text-gray-400 mr-3">{{ content.length }} 字符</span>
+                <button
+                  @click.stop="downloadAttachment(path, content)"
+                  class="inline-flex items-center gap-1 px-2.5 py-1 border border-gray-300 rounded-md text-xs text-gray-700 hover:bg-gray-50 cursor-pointer"
+                >
+                  <span class="material-icons-round text-[14px]">download</span>
+                  下载
+                </button>
               </div>
             </div>
           </div>
@@ -175,6 +192,44 @@
               <p class="text-sm">暂无版本</p>
             </div>
           </div>
+
+          <!-- Edit History -->
+          <div class="bg-white rounded-2xl border border-gray-200 shadow-card">
+            <div class="px-6 py-4 border-b border-gray-100">
+              <h3 class="text-base font-semibold text-gray-900">编辑记录</h3>
+            </div>
+            <div v-if="editLogs.length" class="px-6 py-4">
+              <div v-for="(log, i) in editLogs" :key="log.id" class="flex gap-3">
+                <div class="flex flex-col items-center">
+                  <div class="w-2.5 h-2.5 rounded-full bg-gray-400 mt-1.5 shrink-0"></div>
+                  <div v-if="i < editLogs.length - 1" class="w-px flex-1 bg-gray-200 my-1"></div>
+                </div>
+                <div class="pb-4 min-w-0">
+                  <p class="text-sm font-semibold text-gray-800">{{ logActionLabel(log.action) }}</p>
+                  <p class="text-xs text-gray-500 mt-0.5">
+                    {{ log.actor_username || '未知用户' }} · {{ formatDate(log.created_at) }}
+                  </p>
+                  <p v-if="log.target_path" class="text-xs text-gray-500 mt-0.5">文件: {{ log.target_path }}</p>
+                  <p v-if="log.from_version || log.to_version" class="text-xs text-gray-500 mt-0.5">
+                    版本: {{ log.from_version || '∅' }} → {{ log.to_version || '∅' }}
+                  </p>
+                  <div v-if="logDetailLines(log).length" class="mt-2 space-y-1">
+                    <p
+                      v-for="(line, idx) in logDetailLines(log)"
+                      :key="`${log.id}-${idx}`"
+                      class="text-xs text-gray-600 break-words"
+                    >
+                      {{ line }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div v-else class="p-8 text-center text-gray-400">
+              <span class="material-icons-round text-3xl mb-2">edit_note</span>
+              <p class="text-sm">暂无编辑记录</p>
+            </div>
+          </div>
         </div>
       </div>
     </template>
@@ -216,7 +271,7 @@ import { useRoute } from 'vue-router'
 import { useToast } from '../composables/useToast'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
-import { getSkill, getVersions, getVersion, createVersion, subscribeSkill, unsubscribeSkill } from '../api'
+import { getSkill, getVersions, getVersion, createVersion, subscribeSkill, unsubscribeSkill, getSkillEditLogs } from '../api'
 import Modal from '../components/Modal.vue'
 import FolderUpload from '../components/FolderUpload.vue'
 
@@ -227,6 +282,7 @@ const skillName = computed(() => route.params.name)
 const loading = ref(false)
 const skill = ref(null)
 const versions = ref([])
+const editLogs = ref([])
 const selectedVersion = ref('')
 const currentContent = ref('')
 const currentFiles = ref({})
@@ -244,6 +300,120 @@ const versionForm = ref({
 function formatDate(d) {
   if (!d) return ''
   return new Date(d).toLocaleString('zh-CN')
+}
+
+function logActionLabel(action) {
+  const labels = {
+    skill_created: '创建 Skill',
+    skill_updated: '更新 Skill 信息',
+    version_published: '发布版本',
+    skill_md_updated: '更新 SKILL.md',
+    file_added: '新增文件',
+    file_modified: '修改文件',
+    file_deleted: '删除文件',
+  }
+  return labels[action] || action
+}
+
+function parseLogDetail(detail) {
+  if (!detail) return null
+  if (typeof detail === 'object') return detail
+  try {
+    return JSON.parse(detail)
+  } catch {
+    return { _raw: String(detail) }
+  }
+}
+
+function formatDetailValue(value) {
+  if (value === null || value === undefined || value === '') return '空'
+  if (Array.isArray(value)) return value.length ? value.join(', ') : '空'
+  if (typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function logDetailLines(log) {
+  const detail = parseLogDetail(log.detail)
+  if (!detail) return []
+
+  const fieldLabelMap = {
+    display_name: '显示名称',
+    description: '描述',
+    visibility: '可见性',
+    tags: '标签',
+    category_id: '分类',
+    team_id: '团队',
+    team_ids: '可见团队',
+  }
+
+  if (log.action === 'skill_updated' && detail.changes && typeof detail.changes === 'object') {
+    return Object.entries(detail.changes).map(([field, change]) => {
+      const label = fieldLabelMap[field] || field
+      return `${label}: ${formatDetailValue(change?.old)} -> ${formatDetailValue(change?.new)}`
+    })
+  }
+
+  if (log.action === 'skill_created') {
+    const lines = []
+    if (detail.display_name) lines.push(`显示名称: ${detail.display_name}`)
+    if (detail.visibility) lines.push(`可见性: ${detail.visibility}`)
+    if (detail.team_ids !== undefined) lines.push(`可见团队: ${formatDetailValue(detail.team_ids)}`)
+    if (detail.tags !== undefined) lines.push(`标签: ${formatDetailValue(detail.tags)}`)
+    return lines
+  }
+
+  if (log.action === 'version_published') {
+    const lines = []
+    if (detail.changelog) lines.push(`变更说明: ${detail.changelog}`)
+    if (detail.summary) {
+      lines.push(`文件变更: +${detail.summary.files_added || 0} / ~${detail.summary.files_modified || 0} / -${detail.summary.files_deleted || 0}`)
+      if (detail.summary.added_paths?.length) lines.push(`新增文件: ${detail.summary.added_paths.join(', ')}`)
+      if (detail.summary.modified_paths?.length) lines.push(`修改文件: ${detail.summary.modified_paths.join(', ')}`)
+      if (detail.summary.deleted_paths?.length) lines.push(`删除文件: ${detail.summary.deleted_paths.join(', ')}`)
+      if (detail.summary.skill_md_changed) lines.push('SKILL.md: 已更新')
+    }
+    return lines
+  }
+
+  if (log.action === 'skill_md_updated') {
+    return [`内容长度: ${detail.old_length || 0} -> ${detail.new_length || 0}`]
+  }
+
+  if (log.action === 'file_added') {
+    return [`文件长度: 0 -> ${detail.new_length || 0}`]
+  }
+
+  if (log.action === 'file_modified') {
+    return [`文件长度: ${detail.old_length || 0} -> ${detail.new_length || 0}`]
+  }
+
+  if (log.action === 'file_deleted') {
+    return [`文件长度: ${detail.old_length || 0} -> 0`]
+  }
+
+  if (detail._raw) return [detail._raw]
+  return [JSON.stringify(detail)]
+}
+
+function attachmentDownloadName(path) {
+  if (!path) return 'attachment.txt'
+  return path.replace(/[\\/]/g, '__')
+}
+
+function downloadAttachment(path, content) {
+  try {
+    const blob = new Blob([content ?? ''], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = attachmentDownloadName(path)
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  } catch {
+    toast.error('下载失败')
+  }
 }
 
 async function toggleSubscription() {
@@ -268,12 +438,14 @@ async function toggleSubscription() {
 async function loadSkill() {
   loading.value = true
   try {
-    const [skillRes, versionsRes] = await Promise.all([
+    const [skillRes, versionsRes, logsRes] = await Promise.all([
       getSkill(skillName.value),
       getVersions(skillName.value),
+      getSkillEditLogs(skillName.value, { limit: 100 }),
     ])
     skill.value = skillRes.data
     versions.value = versionsRes.data
+    editLogs.value = logsRes.data || []
 
     if (versions.value.length > 0) {
       selectedVersion.value = versions.value[0].version

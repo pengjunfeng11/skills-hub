@@ -1,19 +1,48 @@
-# Skills Hub - 私有化 Skills 管理平台
+# Skills Hub - 面向团队的私有 Skills 平台
 
 <p align="center">
-  <strong>一个自托管的 Claude Code Skills 注册中心</strong><br>
-  集中管理、共享和分发团队/公司的 Claude Code Skills
+  <strong>统一管理、授权分发、可审计追踪的 Skills 基础设施</strong><br>
+  面向 Claude Code / Codex 等代码智能平台的企业级 Skills Hub
 </p>
 
-## 为什么需要 Skills Hub？
+## 平台定位
 
-团队/公司的业务相关 Claude Code Skills 散落在各开发者本地或 Git 仓库中，缺乏统一的管理、版本控制和发现机制。Skills Hub 解决这个问题：
+当团队把 Skills 当作工程资产来维护时，单纯的本地文件和零散仓库管理会很快遇到三个问题：
 
-- **集中管理** — 所有 Skills 统一存储、分类、搜索
-- **版本控制** — 每次修改创建新版本，支持 semver，可回溯
-- **权限控制** — public / team / private 三级可见性
-- **API 分发** — AI 和 CLI 通过 API Key 自动拉取 Skills
-- **团队协作** — 团队级别的 Skills 共享
+1. 资产分散：Skills 分布在个人机器和多个仓库，难发现、难复用。  
+2. 边界不清：谁可以看、谁可以用、谁改过什么，缺少统一治理。  
+3. 接入不稳：不同项目、不同平台接入方式不统一，难规模化推广。  
+
+Skills Hub 作为“Skill 管理与分发控制面”，把上述问题收敛为统一平台能力。
+
+## 平台特性（重点）
+
+### 1) Skills 资产化管理
+
+- **统一目录**：集中存储全部 Skills，支持名称/描述/标签检索。
+- **版本化发布**：每次变更生成版本，支持 semver 和版本回溯。
+- **在线编辑与文件管理**：支持 Web 端编辑 Skill 主体与附属文件。
+- **附属文件下载**：支持直接下载 Skill 附件，便于本地复用与调试。
+
+### 2) 访问控制与范围治理
+
+- **订阅门禁（核心）**：只有“已订阅且启用”的 Skill 才会通过 Plugin API 返回。
+- **可见性分级**：`public / team / private` 三层范围控制。
+- **Team 范围隔离**：Team Skill 必须显式指定可见 Team，非目标 Team 用户不可见不可用。
+- **API Key 认证**：通过 API Key 统一给 AI/CLI 接入，便于策略和审计。
+
+### 3) 组织协作与可审计性
+
+- **团队协作模型**：按 Team 管理可见范围和协作边界。
+- **编辑记录追踪**：记录 Skill 与附属文件修改历史、修改人、修改时间。
+- **单一超级管理员模型**：admin 可全局可见，便于平台治理和运维处理。
+
+### 4) 多平台接入能力
+
+- **Claude Code 一键接入**：`setup-claude.sh` 自动配置 Hook + MCP + 环境变量。
+- **项目级配置**：每个项目可独立 `.skills-hub.json`，支持不同 URL / API Key / 默认 skills。
+- **MCP 原生支持**：支持 SSE MCP Server 接入，兼容标准 MCP 客户端。
+- **脚本化验证**：`scripts/claude/smoke-test.sh` 提供连通性与权限快速检查。
 
 ## 架构概览
 
@@ -99,26 +128,40 @@ npm install
 npm run dev
 ```
 
-## 功能特性
+## 核心使用机制：订阅驱动分发
 
-### 已实现 (MVP)
+Skills Hub 的 Plugin API 不是“全量技能目录”，而是“当前用户已订阅技能目录”：
 
-- **用户认证** — 注册 / 登录 / JWT Token
-- **Skill CRUD** — 创建、编辑、删除、查看 Skills
-- **版本管理** — 每次修改创建新版本，支持 semver
-- **Plugin API** — AI/CLI 使用的 API（resolve / catalog / raw）
-- **API Key 管理** — 生成 / 管理 API Key，用于 Plugin API 认证
-- **在线编辑器** — Markdown 编辑 + 实时预览
-- **搜索** — 按名称、描述、标签搜索 Skills
-- **团队管理** — 创建团队、团队级 Skills
-- **权限控制** — public / team / private 可见性
-- **Docker Compose 部署** — 一键启动
-- **MCP Server** — 标准 MCP 协议集成，Claude Code 原生支持
-- **集成指南** — 前端集成向导页面 + 一键配置脚本
-- **输入验证** — 全面的 Pydantic 字段约束和 SQL 注入防护
-- **API Key 权限** — scope 级别的访问控制（read / write）
+- `catalog` 只返回当前用户已订阅且启用的已发布 Skills
+- `resolve` 只解析当前用户已订阅且启用的 Skills
+- `raw` 对未订阅 Skill 返回 `403 Not subscribed to this skill`
 
-### 规划中
+推荐流程：
+
+1. 创建并发布 Skill（作者会自动订阅该 Skill）
+2. 在 Skills 页面按需订阅/取消订阅
+3. 在设置页面创建 API Key
+4. 使用 API Key 调用 Plugin API（`catalog / resolve / raw`）
+
+## 已实现能力清单
+
+- 用户认证（注册 / 登录 / JWT）
+- Skill CRUD（创建 / 编辑 / 删除 / 查看）
+- 版本管理（发布、回溯、semver）
+- Plugin API（`resolve / catalog / raw`）
+- API Key 管理（创建、查看、编辑、删除）
+- 订阅机制（按订阅过滤可用 Skills）
+- 团队管理（Team 创建与成员关系）
+- 可见性控制（public / team / private）
+- 在线编辑器（Markdown + 预览）
+- 编辑记录（Skill 与附属文件）
+- 附属文件下载
+- MCP Server（SSE 协议）
+- Claude Code 一键集成脚本
+- Docker Compose 一键部署
+- 输入校验与基础安全防护
+
+## 规划中
 
 - 使用统计
 - 评分 / 评论
@@ -130,7 +173,9 @@ npm run dev
 
 ### 方式一：一键配置脚本（推荐）
 
-项目提供了交互式配置脚本，自动完成 Hook + MCP + 环境变量的配置：
+项目提供了交互式和非交互式配置脚本，自动完成 Hook + MCP + 环境变量的配置。
+
+#### 1) 交互式（本地手动配置）
 
 ```bash
 cd skills-hub
@@ -142,6 +187,50 @@ bash setup-claude.sh
 - 更新 `~/.claude/settings.json` 添加 Hook 配置
 - 更新 `~/.claude.json` 添加 MCP Server 配置
 - 设置 `SKILLS_HUB_URL` 和 `SKILLS_HUB_API_KEY` 环境变量
+- 可选写入当前项目 `.skills-hub.json`（项目级 URL / API Key / 默认 skills）
+
+#### 2) 非交互式（一条命令，适合快速接入）
+
+```bash
+cd skills-hub
+bash setup-claude.sh \
+  --url http://127.0.0.1:8000 \
+  --api-key skh_your_api_key \
+  --project-dir /path/to/your/project \
+  --write-project true \
+  --non-interactive
+```
+
+也可以用封装脚本（自动调用 `setup-claude.sh`）：
+
+```bash
+cd skills-hub
+bash scripts/claude/bootstrap.sh \
+  --url http://127.0.0.1:8000 \
+  --api-key skh_your_api_key \
+  --project-dir /path/to/your/project \
+  --skills deploy-k8s,code-review
+```
+
+配置完成后可执行连通性测试：
+
+```bash
+bash scripts/claude/smoke-test.sh --project-dir /path/to/your/project
+```
+
+### 项目级配置（推荐）
+
+为了支持“不同项目使用不同 Skills Hub/Key”，可以在项目根目录创建 `.skills-hub.json`：
+
+```json
+{
+  "url": "http://127.0.0.1:8000",
+  "api_key": "skh_xxx",
+  "skills": ["deploy-k8s", "code-review"]
+}
+```
+
+Hook 会优先读取该文件；如果没有，再回退到环境变量 `SKILLS_HUB_URL` 和 `SKILLS_HUB_API_KEY`。
 
 也可以在前端 Web UI 的 **集成指南** 页面（`/setup`）查看逐步配置说明和可复制的命令。
 
@@ -190,6 +279,29 @@ curl -X POST https://skills.company.internal/api/v1/skills/resolve \
   -d '{"skills": ["deploy-k8s", "code-review@1.2.0"]}'
 ```
 
+### 验证“仅订阅可用”的最小示例
+
+```bash
+# 1) 先获取 JWT（用于订阅操作）
+TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}' | jq -r .access_token)
+
+# 2) 订阅某个 Skill（示例：deploy-k8s）
+curl -X POST http://localhost:8000/api/skills/deploy-k8s/subscribe \
+  -H "Authorization: Bearer $TOKEN"
+
+# 3) 使用 API Key 查看目录（只会出现已订阅技能）
+curl http://localhost:8000/api/v1/skills/catalog \
+  -H "Authorization: Bearer skh_your_api_key"
+
+# 4) 取消订阅后，再访问 raw 会返回 403
+curl -X DELETE http://localhost:8000/api/skills/deploy-k8s/subscribe \
+  -H "Authorization: Bearer $TOKEN"
+curl http://localhost:8000/api/v1/skills/deploy-k8s/raw \
+  -H "Authorization: Bearer skh_your_api_key"
+```
+
 ## API 文档
 
 启动后端后访问 http://localhost:8000/docs 查看完整的 Swagger API 文档。
@@ -203,6 +315,7 @@ curl -X POST https://skills.company.internal/api/v1/skills/resolve \
 | `/api/auth/me` | GET | 当前用户 | JWT |
 | `/api/skills` | GET/POST | Skills 列表/创建 | JWT |
 | `/api/skills/{name}` | GET/PUT/DELETE | Skill 详情/更新/删除 | JWT |
+| `/api/skills/{name}/subscribe` | POST/DELETE | 订阅/取消订阅 Skill | JWT |
 | `/api/skills/{name}/versions` | GET/POST | 版本列表/发布 | JWT |
 | `/api/keys` | GET/POST | API Key 列表/创建 | JWT |
 | `/api/v1/skills/resolve` | POST | 批量获取 Skills | API Key |
@@ -216,6 +329,10 @@ skills-hub/
 ├── docker-compose.yml          # Docker Compose 编排
 ├── .env.example                # 环境变量模板
 ├── setup-claude.sh             # Claude Code 一键集成配置脚本
+├── scripts/
+│   └── claude/
+│       ├── bootstrap.sh        # Claude Code 非交互快速配置
+│       └── smoke-test.sh       # Claude Code 集成连通性检查
 ├── backend/                    # FastAPI 后端
 │   ├── pyproject.toml
 │   ├── Dockerfile

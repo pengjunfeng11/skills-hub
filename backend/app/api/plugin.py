@@ -3,6 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.permissions import can_access_skill
 from app.core.security import get_api_key_with_user
 from app.database import get_db
 from app.models.api_key import ApiKey
@@ -51,15 +52,19 @@ async def resolve_skills(
         else:
             name, ver = spec, None
 
-        result = await db.execute(select(Skill).where(
-            Skill.name == name, Skill.is_published == True
-        ))
+        result = await db.execute(
+            select(Skill)
+            .where(Skill.name == name, Skill.is_published == True)
+            .options(selectinload(Skill.visibility_teams))
+        )
         skill = result.scalar_one_or_none()
         if not skill:
             continue
 
         # Subscription filtering
         if skill.id not in subscribed_skill_ids:
+            continue
+        if not can_access_skill(skill, user):
             continue
 
         # Get specific version or latest
@@ -141,13 +146,15 @@ async def catalog(
             Skill.is_published == True,
             Skill.id.in_(subscribed_skill_ids),
         )
-        .options(selectinload(Skill.versions))
+        .options(selectinload(Skill.versions), selectinload(Skill.visibility_teams))
         .order_by(Skill.name)
     )
     skills = result.scalars().all()
 
     items = []
     for skill in skills:
+        if not can_access_skill(skill, user):
+            continue
         latest = skill.versions[0] if skill.versions else None
         if latest:
             items.append(
@@ -181,9 +188,11 @@ async def get_skill_raw(
     """Get raw SKILL.md content for a skill."""
     user, api_key = auth
 
-    result = await db.execute(select(Skill).where(
-        Skill.name == name, Skill.is_published == True
-    ))
+    result = await db.execute(
+        select(Skill)
+        .where(Skill.name == name, Skill.is_published == True)
+        .options(selectinload(Skill.visibility_teams))
+    )
     skill = result.scalar_one_or_none()
     if not skill:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -198,6 +207,8 @@ async def get_skill_raw(
     )
     if not sub_result.scalar_one_or_none():
         raise HTTPException(status_code=403, detail="Not subscribed to this skill")
+    if not can_access_skill(skill, user):
+        raise HTTPException(status_code=403, detail="Access denied")
 
     if version:
         ver_result = await db.execute(
